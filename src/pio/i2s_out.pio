@@ -1,0 +1,21 @@
+.program i2s_out
+.side_set 2
+
+; sideset bit 0 = BCLK
+; sideset bit 1 = LRCLK
+; DATA is shifted MSB-first on OUT
+
+.wrap_target
+    pull block         side 0b00
+    set x, 15          side 0b00
+left_loop:
+    out pins, 1        side 0b00
+    nop                side 0b01
+    jmp x-- left_loop  side 0b00
+
+    set x, 15          side 0b10
+right_loop:
+    out pins, 1        side 0b10
+    nop                side 0b11
+    jmp x-- right_loop side 0b10
+.wrap

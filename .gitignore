@@ -1,0 +1,17 @@
+# Build artifacts
+build/
+arduino/synth_v1/build/
+
+# IDE
+.vscode/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Claude Code
+.claude/
+
+# Samples (large binary files, not tracked)
+samples/*.wav
+samples/*.aiff

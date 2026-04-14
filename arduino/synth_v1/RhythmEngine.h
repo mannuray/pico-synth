@@ -37,6 +37,7 @@ private:
     uint32_t phase = 0;
     uint32_t phaseStep = 0;
     uint16_t remainingSamples = 0;
+    uint16_t age = 0;  // samples since trigger, for multi-stage envelopes
   };
 
   static constexpr uint8_t kPatternCount = 8;

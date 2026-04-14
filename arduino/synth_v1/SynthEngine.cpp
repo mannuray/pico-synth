@@ -684,8 +684,8 @@ void SynthEngine::renderFrames(size_t frameCount, uint16_t micLevel) {
       tonalMixR = (tonalMixR * 3) / (activeVoiceCount + 2);
     }
 
-    const int32_t mixL = tonalMixL + (rhythmSample >> 1);
-    const int32_t mixR = tonalMixR + (rhythmSample >> 1);
+    const int32_t mixL = tonalMixL + rhythmSample;
+    const int32_t mixR = tonalMixR + rhythmSample;
     // Collapse to mono for effect processing.
     int32_t mix = ((mixL + mixR) >> 1) * masterVolume_ >> 15;
 

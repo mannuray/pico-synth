@@ -11,6 +11,8 @@ struct RhythmPattern {
   uint16_t hatMask;
   uint16_t percMask;
   uint16_t accentMask;
+  uint8_t percSample;  // which perc sample to use (index into kDrumSamples)
+  bool openHat;         // use open hat instead of closed on hat hits
 };
 
 class RhythmEngine {
@@ -32,15 +34,14 @@ public:
 private:
   struct DrumVoice {
     bool active = false;
-    uint8_t type = 0;
-    int32_t amplitude = 0;
-    uint32_t phase = 0;
-    uint32_t phaseStep = 0;
-    uint16_t remainingSamples = 0;
-    uint16_t age = 0;  // samples since trigger, for multi-stage envelopes
+    const int16_t* sampleData = nullptr;
+    size_t sampleLength = 0;
+    size_t position = 0;
+    int32_t amplitude = 256;  // Q8 gain (256 = unity)
   };
 
   static constexpr uint8_t kPatternCount = 8;
+  static constexpr uint8_t kVoiceCount = 4;
 
   uint32_t sampleRate_ = config::kSampleRate;
   uint8_t bpm_ = config::kMetronomeDefaultBpm;
@@ -48,12 +49,11 @@ private:
   uint8_t currentPattern_ = 0;
   uint8_t currentStep_ = 0;
   uint32_t samplesUntilNextStep_ = 0;
-  DrumVoice voices_[4];
+  DrumVoice voices_[kVoiceCount];
   uint32_t noiseLfsr_ = 0x1aceb00c;
   const int16_t* sineTable_ = nullptr;
 
   void triggerStep(uint8_t step);
-  void startVoice(uint8_t index, uint8_t type);
-  int16_t renderVoice(DrumVoice &voice);
+  void startVoice(uint8_t index, uint8_t sampleId, int32_t gain);
   uint32_t stepSamples() const;
 };

@@ -3,33 +3,30 @@
 #include "IEventSink.h"
 
 enum class OutputMode : uint8_t {
-  SynthOnly = 0,
-  MidiOnly,
-  SynthAndMidi,
-  Debug
+  SynthOnly = 0,  // no computer connected: play through the speaker
+  MidiOnly        // computer connected: send USB MIDI, speaker silent
 };
 
 const char *outputModeName(OutputMode mode);
 
-// Fans events and commands out to the sinks enabled by the current mode.
+// Sends events and commands to the sink for the current mode.
 class OutputRouter final : public IEventSink {
 public:
-  OutputRouter(IEventSink &synthSink, IEventSink &midiSink, IEventSink &debugSink, OutputMode initialMode);
+  OutputRouter(IEventSink &synthSink, IEventSink &midiSink, OutputMode initialMode);
 
-  // Sinks that stop receiving output get AllNotesOff first so no notes hang.
+  // The sink being switched away from gets AllNotesOff first so no notes hang.
   // Returns true if the mode changed.
   bool setMode(OutputMode mode);
   OutputMode mode() const { return mode_; }
-  bool synthActive() const;
+  bool synthActive() const { return mode_ == OutputMode::SynthOnly; }
 
   void handleEvent(const KeyboardEvent &event) override;
   void handleCommand(const PerformanceCommand &command) override;
 
 private:
-  static constexpr uint8_t kSinkCount = 3;
-
-  IEventSink *const sinks_[kSinkCount];
+  IEventSink &synthSink_;
+  IEventSink &midiSink_;
   OutputMode mode_;
 
-  static uint8_t sinkMask(OutputMode mode);
+  IEventSink &activeSink() const;
 };

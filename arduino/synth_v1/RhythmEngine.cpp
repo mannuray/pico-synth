@@ -43,7 +43,7 @@ void RhythmEngine::begin(uint32_t sampleRate) {
 }
 
 void RhythmEngine::setBpm(uint8_t bpm) {
-  bpm_ = constrain(bpm, config::kMetronomeMinBpm, config::kMetronomeMaxBpm);
+  bpm_ = constrain(bpm, config::kTempoMinBpm, config::kTempoMaxBpm);
 }
 
 void RhythmEngine::setPlaying(bool playing) {

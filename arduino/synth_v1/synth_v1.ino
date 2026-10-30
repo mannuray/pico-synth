@@ -5,7 +5,6 @@
 #include "MatrixScanner.h"
 #include "MicInput.h"
 #include "MidiEventSink.h"
-#include "SerialDebugSink.h"
 #include "SynthEngine.h"
 #include "SynthEventSink.h"
 
@@ -19,8 +18,7 @@ I2SAudioOutput audioOutput;
 SynthEngine synth(audioOutput);
 SynthEventSink synthSink(synth);
 MidiEventSink midiSink;
-SerialDebugSink debugSink(Serial);
-OutputRouter router(synthSink, midiSink, debugSink, OutputMode::SynthOnly);
+OutputRouter router(synthSink, midiSink, OutputMode::SynthOnly);
 PerformanceController performance(router, Serial);
 AppController app(matrixScanner, micInput, synth, router, performance, hostLink, statusLed, systemClock, Serial);
 }  // namespace

@@ -104,7 +104,7 @@ void MidiEventSink::handleCommand(const PerformanceCommand &command) {
       sendControlChange(kCcVolume, map(command.value, config::kMinMasterVolume, config::kMaxMasterVolume, 0, 127));
       break;
     case CommandType::Tempo:
-      sendControlChange(kCcTempo, map(command.value, config::kMetronomeMinBpm, config::kMetronomeMaxBpm, 0, 127));
+      sendControlChange(kCcTempo, map(command.value, config::kTempoMinBpm, config::kTempoMaxBpm, 0, 127));
       break;
     case CommandType::Effect:
       sendControlChange(kCcEffect, command.value);

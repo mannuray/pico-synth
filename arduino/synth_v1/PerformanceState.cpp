@@ -49,7 +49,7 @@ bool PerformanceState::sustainEnabled() const {
 
 void PerformanceState::setTempoBpm(int bpm) {
   tempoBpm_ = static_cast<uint8_t>(
-      constrain(bpm, static_cast<int>(config::kMetronomeMinBpm), static_cast<int>(config::kMetronomeMaxBpm)));
+      constrain(bpm, static_cast<int>(config::kTempoMinBpm), static_cast<int>(config::kTempoMaxBpm)));
 }
 
 uint8_t PerformanceState::tempoBpm() const {

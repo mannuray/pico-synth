@@ -21,13 +21,12 @@ bool SynthEngine::begin() {
 void SynthEngine::noteOn(uint8_t midiNote) {
   Voice &voice = allocateVoice();
   const uint8_t voiceIndex = static_cast<uint8_t>(&voice - &voices_[0]);
+  voiceStartOrder_[voiceIndex] = ++notesStarted_;
   voice.start(midiNote, presets::at(presetIndex_), kStereoPan[voiceIndex & 7], noise_);
 }
 
+// Sustain is applied upstream: note-offs for sustained keys arrive when it's released.
 void SynthEngine::noteOff(uint8_t midiNote) {
-  if (sustainEnabled_) {
-    return;
-  }
   for (Voice &voice : voices_) {
     if (voice.active() && voice.midiNote() == midiNote) {
       voice.release();
@@ -39,10 +38,6 @@ void SynthEngine::allNotesOff() {
   for (Voice &voice : voices_) {
     voice.reset();
   }
-}
-
-void SynthEngine::setSustainEnabled(bool enabled) {
-  sustainEnabled_ = enabled;
 }
 
 void SynthEngine::setPreset(uint8_t presetIndex) {
@@ -63,7 +58,7 @@ void SynthEngine::setEffectEnabled(bool enabled) {
 }
 
 void SynthEngine::setTempoBpm(uint8_t bpm) {
-  tempoBpm_ = constrain(bpm, config::kMetronomeMinBpm, config::kMetronomeMaxBpm);
+  tempoBpm_ = constrain(bpm, config::kTempoMinBpm, config::kTempoMaxBpm);
   rhythm_.setBpm(tempoBpm_);
 }
 
@@ -95,7 +90,7 @@ void SynthEngine::setReleaseOffset(int8_t offset) {
   updateShape();
 }
 
-// Free voice first, then one already releasing, else steal voice 0.
+// Free voice first, then the quietest releasing voice, else the oldest note.
 Voice &SynthEngine::allocateVoice() {
   for (Voice &voice : voices_) {
     if (!voice.active()) {
@@ -103,13 +98,23 @@ Voice &SynthEngine::allocateVoice() {
     }
   }
 
+  Voice *quietestReleasing = nullptr;
   for (Voice &voice : voices_) {
-    if (voice.releasing()) {
-      return voice;
+    if (voice.releasing() && (quietestReleasing == nullptr || voice.level() < quietestReleasing->level())) {
+      quietestReleasing = &voice;
     }
   }
+  if (quietestReleasing != nullptr) {
+    return *quietestReleasing;
+  }
 
-  return voices_[0];
+  uint8_t oldest = 0;
+  for (uint8_t i = 1; i < config::kPolyphony; ++i) {
+    if (voiceStartOrder_[i] < voiceStartOrder_[oldest]) {
+      oldest = i;
+    }
+  }
+  return voices_[oldest];
 }
 
 void SynthEngine::updateShape() {
@@ -188,7 +193,7 @@ uint32_t SynthEngine::renderBlock(size_t frameCount) {
 
     if (organ != nullptr && rotarySource != nullptr) {
       // Rotary speaker replaces the effect's stereo output on organ presets.
-      rotary_.render(*organ, preset, *rotarySource, mix, blockL_[i], blockR_[i]);
+      rotary_.render(*organ, preset, rotarySource->phase(), mix, blockL_[i], blockR_[i]);
     } else if (effectWet) {
       blockL_[i] = dsp::softClip(wetL);
       blockR_[i] = dsp::softClip(wetR);

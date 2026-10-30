@@ -9,7 +9,7 @@ enum class CommandType : uint8_t {
   SelectPreset,    // preset index (bank * instruments per bank + slot)
   Sustain,         // 0 = off, 1 = on
   Volume,          // master volume, config::kMinMasterVolume..kMaxMasterVolume
-  Tempo,           // BPM, config::kMetronomeMinBpm..kMetronomeMaxBpm
+  Tempo,           // BPM, config::kTempoMinBpm..kTempoMaxBpm
   Effect,          // EffectType
   EffectEnabled,   // 0 = off, 1 = on
   RhythmPlaying,   // 0 = stopped, 1 = playing

@@ -16,9 +16,6 @@ void SynthEventSink::handleCommand(const PerformanceCommand &command) {
     case CommandType::SelectPreset:
       synth_.setPreset(static_cast<uint8_t>(command.value));
       break;
-    case CommandType::Sustain:
-      synth_.setSustainEnabled(command.value != 0);
-      break;
     case CommandType::Volume:
       synth_.setMasterVolume(command.value);
       break;
@@ -52,6 +49,7 @@ void SynthEventSink::handleCommand(const PerformanceCommand &command) {
     case CommandType::AllNotesOff:
       synth_.allNotesOff();
       break;
+    case CommandType::Sustain:        // the controller holds back note-offs while sustain is on
     case CommandType::SelectBank:     // the preset index already includes the bank
     case CommandType::OctaveShift:    // applied to note numbers before they arrive
     case CommandType::Transpose:      // applied to note numbers before they arrive

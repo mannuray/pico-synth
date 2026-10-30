@@ -36,9 +36,9 @@ constexpr uint8_t kInstrumentsPerBank = 8;
 constexpr uint8_t kPresetCount = kBankCount * kInstrumentsPerBank;
 
 constexpr uint8_t kBaseMidiNote = 48; // C3 on the leftmost key
-constexpr uint8_t kMetronomeMinBpm = 40;
-constexpr uint8_t kMetronomeMaxBpm = 240;
-constexpr uint8_t kMetronomeDefaultBpm = 120;
+constexpr uint8_t kTempoMinBpm = 40;
+constexpr uint8_t kTempoMaxBpm = 240;
+constexpr uint8_t kTempoDefaultBpm = 120;
 
 constexpr int16_t kDefaultMasterVolume = 24576;
 constexpr int16_t kVolumeStep = 4096;

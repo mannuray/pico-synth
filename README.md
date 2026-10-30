@@ -132,6 +132,16 @@ arduino-cli compile -b rp2040:rp2040:rpipico arduino/synth_v1
 arduino-cli upload -b rp2040:rp2040:rpipico -p /dev/cu.usbmodem2101 arduino/synth_v1
 ```
 
+### Host tests
+
+The engine and control logic also build on a desktop compiler, with no Pico needed:
+
+```bash
+tests/host/run.sh
+```
+
+This renders every preset with every effect and compares the result with `tests/host/golden_expected.txt`, then runs the engine, control and MIDI-output tests. If you change the sound on purpose, accept the new output with `tests/host/run.sh --update`.
+
 ## Wavetable Generator
 
 The `tools/extract_wavetable.py` script generates multi-frame wavetable data from spectral models:
@@ -160,7 +170,6 @@ KeyTracker            Held and sustained keys
 OutputRouter          Sends events/commands to the sinks for the current mode
 SynthEventSink        Applies events/commands to the synth engine
 MidiEventSink         USB MIDI output (notes, CC, program change)
-SerialDebugSink       Serial monitor debug output
 SynthEngine           Voice allocation, mixing, effect/rotary routing, output
 Voice                 One note: oscillators, envelope, filter
 Oscillator            Waveforms and wavetables

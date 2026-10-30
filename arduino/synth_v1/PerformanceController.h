@@ -1,8 +1,8 @@
 #pragma once
 
+#include "ControlType.h"
 #include "IEventSink.h"
 #include "KeyTracker.h"
-#include "MatrixMap.h"
 #include "PerformanceState.h"
 #include "PitchSettings.h"
 

@@ -13,4 +13,4 @@ struct StatusSnapshot {
 };
 
 // Prints the one-line periodic status report.
-void printStatus(Print &out, const StatusSnapshot &status);
+void printStatusLine(Print &out, const StatusSnapshot &status);

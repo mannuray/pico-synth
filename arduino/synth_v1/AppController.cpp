@@ -64,11 +64,11 @@ void AppController::tick() {
 }
 
 void AppController::printStatus() const {
-  ::printStatus(log_, StatusSnapshot{performance_.performance(),
-                                     performance_.pitch(),
-                                     router_.mode(),
-                                     micLevel_,
-                                     cpuMeter_.loadPercent()});
+  printStatusLine(log_, StatusSnapshot{performance_.performance(),
+                                       performance_.pitch(),
+                                       router_.mode(),
+                                       micLevel_,
+                                       cpuMeter_.loadPercent()});
 }
 
 // Computer connected = MidiOnly, power only = SynthOnly.

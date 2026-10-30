@@ -26,7 +26,7 @@ private:
   static constexpr uint8_t kVoiceCount = 4;
 
   uint32_t sampleRate_ = config::kSampleRate;
-  uint8_t bpm_ = config::kMetronomeDefaultBpm;
+  uint8_t bpm_ = config::kTempoDefaultBpm;
   bool playing_ = false;
   uint8_t currentPattern_ = 0;
   uint8_t currentStep_ = 0;

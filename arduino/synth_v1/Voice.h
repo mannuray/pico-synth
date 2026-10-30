@@ -1,7 +1,7 @@
 #pragma once
 
 #include "Dsp.h"
-#include "Effects.h"
+#include "EffectTypes.h"
 #include "SynthTypes.h"
 #include "VoiceShape.h"
 
@@ -19,6 +19,7 @@ public:
   bool active() const { return active_; }
   bool releasing() const { return stage_ == Stage::Release; }
   uint8_t midiNote() const { return midiNote_; }
+  int32_t level() const { return level_; }  // envelope level, 0..32767
   uint32_t phase() const { return phase_; }
   int16_t stereoPan() const { return stereoPan_; }  // -256 (full left) to +256 (full right)
 

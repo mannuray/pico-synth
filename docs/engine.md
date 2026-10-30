@@ -19,7 +19,7 @@ Specifications:
 
 - 44,100 Hz sample rate
 - 16-bit output
-- 8-voice polyphony
+- 8-voice polyphony; when all are busy a new note takes the quietest releasing voice, else the oldest note
 - 64-sample audio block size
 
 ## Oscillator Layer

@@ -19,18 +19,17 @@ arduino-cli upload -b rp2040:rp2040:rpipico -p /dev/cu.usbmodem2101 arduino/synt
 | PerformanceState.h/cpp | Bank, preset, effect, sustain, tempo, volume, envelope offsets (single source of truth) |
 | PitchSettings.h/cpp | Octave and transpose; key index to MIDI note |
 | KeyTracker.h/cpp | Which keys are held or still sounding (sustain) |
-| OutputRouter.h/cpp | Sends events/commands to the sinks enabled by the output mode |
+| OutputRouter.h/cpp | Sends events/commands to the synth or MIDI sink, by output mode |
 | IEventSink.h | Output sink interface |
 | SynthEventSink.h/cpp | Applies events/commands to the synth engine |
 | MidiEventSink.h/cpp | USB MIDI output (notes, CC, program change) |
-| SerialDebugSink.h/cpp | Serial monitor debug output |
 | KeyboardEvent.h, PerformanceCommand.h | Note events and typed performance commands |
 | SynthEngine.h/cpp | Voice allocation, mixing, effect/rotary routing, audio output |
 | Voice.h/cpp | One note: oscillators (plain/unison/FM), envelope, filter, organ percussion and click |
 | VoiceShape.h/cpp | Per-preset envelope and filter constants, with the ADSR offsets applied |
 | Oscillator.h/cpp | Waveforms and wavetable lookup (the only file that includes WaveTableData.h) |
 | RotarySpeaker.h/cpp | Leslie-style rotary speaker for the organ presets |
-| Effects.h/cpp | Master effects (one class each) and the effect rack |
+| Effects.h/cpp, EffectTypes.h | Master effects (one class each), the effect rack, and the data they share with voices |
 | Dsp.h | Shared fixed-point helpers (table lookup, triangle, soft clip, noise) |
 | SynthTypes.h | Waveform, EffectType, Preset types |
 | Presets.h/cpp | Preset table |
@@ -38,6 +37,7 @@ arduino-cli upload -b rp2040:rp2040:rpipico -p /dev/cu.usbmodem2101 arduino/synt
 | WaveTableData.h | Pre-generated wavetable data (14 instruments, 4 frames each) |
 | Config.h | Hardware pins, sample rate, polyphony, bank configuration |
 | MatrixMap.h | Key matrix to note/control mapping |
+| ControlType.h | What each front-panel button does |
 | MatrixScanner.h/cpp | Matrix scanning with debounce (implements IKeyMatrix) |
 | MicInput.h/cpp | Mic level input (implements ILevelInput) |
 | I2SAudioOutput.h/cpp | I2S stereo audio output via PIO |

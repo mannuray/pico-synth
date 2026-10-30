@@ -21,7 +21,6 @@ public:
   void noteOn(uint8_t midiNote);
   void noteOff(uint8_t midiNote);
   void allNotesOff();
-  void setSustainEnabled(bool enabled);
   void setPreset(uint8_t presetIndex);
   void setMasterVolume(int16_t volume);
   void setEffect(EffectType effect);
@@ -41,12 +40,13 @@ public:
 private:
   AudioOutput &audioOutput_;
   Voice voices_[config::kPolyphony];
+  uint32_t voiceStartOrder_[config::kPolyphony] = {};  // for stealing the oldest note
+  uint32_t notesStarted_ = 0;
   uint8_t presetIndex_ = 0;
   VoiceShape shape_;
   EnvelopeOffsets envelopeOffsets_;
   int16_t masterVolume_ = config::kDefaultMasterVolume;
-  bool sustainEnabled_ = false;
-  uint8_t tempoBpm_ = config::kMetronomeDefaultBpm;
+  uint8_t tempoBpm_ = config::kTempoDefaultBpm;
   uint32_t lastProcessingUs_ = 0;
   uint32_t lfoPhase_ = 0;
   RhythmEngine rhythm_;

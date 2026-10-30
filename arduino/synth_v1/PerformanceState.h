@@ -55,7 +55,7 @@ private:
   EffectType effect_ = EffectType::Vibrato;
   bool effectEnabled_ = false;
   bool sustainEnabled_ = false;
-  uint8_t tempoBpm_ = config::kMetronomeDefaultBpm;
+  uint8_t tempoBpm_ = config::kTempoDefaultBpm;
   bool rhythmPlaying_ = false;
   uint8_t rhythmPattern_ = 0;
   int16_t masterVolume_ = config::kDefaultMasterVolume;

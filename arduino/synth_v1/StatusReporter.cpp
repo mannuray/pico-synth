@@ -2,7 +2,7 @@
 #include "Presets.h"
 #include "RhythmPatterns.h"
 
-void printStatus(Print &out, const StatusSnapshot &status) {
+void printStatusLine(Print &out, const StatusSnapshot &status) {
   const PerformanceState &performance = status.performance;
   out.print("preset=");
   out.print(presets::at(performance.activePresetIndex()).name);

@@ -14,6 +14,7 @@ SynthEngine::SynthEngine(AudioOutput &audioOutput) : audioOutput_(audioOutput) {
 bool SynthEngine::begin() {
   rhythm_.begin(config::kSampleRate);
   rhythm_.setBpm(tempoBpm_);
+  rotary_.configure(presets::at(presetIndex_).organ);
   updateShape();
   return audioOutput_.begin(config::kSampleRate, config::kBitsPerSample);
 }
@@ -22,7 +23,12 @@ void SynthEngine::noteOn(uint8_t midiNote) {
   Voice &voice = allocateVoice();
   const uint8_t voiceIndex = static_cast<uint8_t>(&voice - &voices_[0]);
   voiceStartOrder_[voiceIndex] = ++notesStarted_;
-  voice.start(midiNote, presets::at(presetIndex_), kStereoPan[voiceIndex & 7], noise_);
+  // Organ percussion is single-trigger: only when no other key is held.
+  bool otherKeyHeld = false;
+  for (const Voice &other : voices_) {
+    otherKeyHeld = otherKeyHeld || (&other != &voice && other.active() && !other.releasing());
+  }
+  voice.start(midiNote, presets::at(presetIndex_), kStereoPan[voiceIndex & 7], !otherKeyHeld, noise_);
 }
 
 // Sustain is applied upstream: note-offs for sustained keys arrive when it's released.
@@ -42,6 +48,7 @@ void SynthEngine::allNotesOff() {
 
 void SynthEngine::setPreset(uint8_t presetIndex) {
   presetIndex_ = presetIndex % config::kPresetCount;
+  rotary_.configure(presets::at(presetIndex_).organ);
   updateShape();
 }
 
@@ -137,19 +144,10 @@ uint32_t SynthEngine::renderBlock(size_t frameCount) {
   const Preset &preset = presets::at(presetIndex_);
   AudioEffect &effect = effects_.active();
   const bool needsLfo = effect.usesLfo();
-  const OrganTraits *organ = preset.organ;
 
   const uint32_t startUs = micros();
 
-  // The rotary speaker re-samples the first active voice. nullptr = none active.
-  const Voice *rotarySource = nullptr;
-  if (organ != nullptr) {
-    for (const Voice &voice : voices_) {
-      if (voice.active()) { rotarySource = &voice; break; }
-    }
-  }
-
-  EffectContext ctx{0, 0, preset.modulationDepth, osc::kSine};
+  EffectContext ctx{0, 0, osc::kSine};
 
   for (size_t i = 0; i < frameCount; ++i) {
     ctx.lfo = 0;
@@ -159,11 +157,7 @@ uint32_t SynthEngine::renderBlock(size_t frameCount) {
     }
     ctx.lfoPhase = lfoPhase_;
     const VoiceModulation modulation = effect.voiceModulation(ctx);
-    if (organ != nullptr) {
-      rotary_.advance(*organ);
-    }
 
-    const int32_t rhythmSample = rhythm_.renderSample();
     int32_t tonalMixL = 0;
     int32_t tonalMixR = 0;
     uint8_t activeVoiceCount = 0;
@@ -183,27 +177,29 @@ uint32_t SynthEngine::renderBlock(size_t frameCount) {
       tonalMixR = (tonalMixR * 3) / (activeVoiceCount + 2);
     }
 
-    const int32_t mixL = tonalMixL + rhythmSample;
-    const int32_t mixR = tonalMixR + rhythmSample;
-    // Mono mix for effect processing.
-    int32_t mix = ((mixL + mixR) >> 1) * masterVolume_ >> 15;
-    int32_t wetL = 0;
-    int32_t wetR = 0;
-    const bool effectWet = effect.process(mix, wetL, wetR, ctx);
+    // Clamp so the volume multiply stays within 32 bits.
+    const int32_t mixL = constrain(tonalMixL, -65535, 65535);
+    const int32_t mixR = constrain(tonalMixR, -65535, 65535);
+    int32_t left = (mixL * masterVolume_) >> 15;
+    int32_t right = (mixR * masterVolume_) >> 15;
 
-    if (organ != nullptr && rotarySource != nullptr) {
-      // Rotary speaker replaces the effect's stereo output on organ presets.
-      rotary_.render(*organ, preset, rotarySource->phase(), mix, blockL_[i], blockR_[i]);
-    } else if (effectWet) {
-      blockL_[i] = dsp::softClip(wetL);
-      blockR_[i] = dsp::softClip(wetR);
-    } else {
-      // Stereo output from per-voice panning (no effect output).
-      // Add 1-bit triangular dither to reduce quantization noise on quiet tails.
-      const int32_t dither = static_cast<int32_t>((noise_.next() >> 30) & 3) - 1; // -1, 0, or 1
-      blockL_[i] = dsp::softClip(((mixL * masterVolume_) >> 15) + dither);
-      blockR_[i] = dsp::softClip(((mixR * masterVolume_) >> 15) + dither);
+    effect.process(left, right, ctx);
+    if (rotary_.enabled()) {
+      rotary_.process(left, right);
     }
+
+    // Drums join after the effect and the rotary speaker: they stay dry and
+    // sound the same whichever preset is selected.
+    const int32_t drums = (constrain(rhythm_.renderSample(), -65535, 65535) * masterVolume_) >> 15;
+    left += drums;
+    right += drums;
+
+    // Triangular dither (difference of two random bits: -1, 0 or +1) reduces
+    // quantization noise on quiet tails.
+    const uint32_t bits = noise_.next();
+    const int32_t dither = static_cast<int32_t>(bits >> 31) - static_cast<int32_t>((bits >> 30) & 1u);
+    blockL_[i] = dsp::softClip(left + dither);
+    blockR_[i] = dsp::softClip(right + dither);
   }
 
   const uint32_t processingUs = micros() - startUs;

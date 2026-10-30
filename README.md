@@ -5,18 +5,18 @@ A 37-key polyphonic synthesizer and USB MIDI controller built on the Raspberry P
 ## Features
 
 - **8-voice polyphony** at 44.1 kHz / 16-bit
-- **24 presets** across 3 banks (acoustic, electronic, experimental)
+- **24 presets** across 3 banks (keys & folk, orchestral, synth), level-matched
 - **Multi-frame wavetable synthesis** with 14 instrument spectral models (512 samples x 4 frames each, stored in flash)
 - **3-pair FM synthesis** (Algorithm 5 style) for electric piano and bell sounds
 - **PolyBLEP anti-aliased** sawtooth and square oscillators
-- **Exponential ADSR envelopes** with per-voice spectral modulation decay
+- **Exponential ADSR envelopes** with two-stage piano/guitar decay and a per-voice spectral envelope
 - **Per-voice resonant state-variable filter** with note-dependent brightness
 - **Per-voice stereo panning** across the stereo field
-- **Built-in per-preset vibrato** for solo instruments (violin, clarinet, flute)
+- **Built-in per-preset vibrato** in cents, fading in after the attack
 - **Effects**: reverb, chorus, delay, tremolo, vibrato, bitcrusher
-- **Per-preset default effects** (piano gets reverb, strings get chorus, etc.)
-- **Organ simulation**: key click noise, Hammond percussion, rotary speaker
-- **Rhythm engine** with 8 patterns and synthesized drum voices
+- **Per-preset default effects** (acoustic instruments get reverb, basses play dry, etc.)
+- **Organ simulation**: key click, single-trigger Hammond percussion, Leslie rotary speaker
+- **Rhythm engine**: 8 patterns (Pop, Rock, Ballad, Disco, Funk, Latin, Waltz, March) with accents, ghost notes, swing, fills and crashes, on a 12-piece drum kit
 - **USB MIDI** with auto-detection (computer = MIDI controller, power only = standalone synth)
 - **Output dithering** for clean quiet tails
 
@@ -44,44 +44,46 @@ See [docs/matrix-map.md](docs/matrix-map.md) for the full key matrix layout.
 
 ## Preset Banks
 
-### Bank 1: Acoustic / Traditional
+Presets are listed in slot order within each bank (which physical button selects which slot is still to be confirmed). Cello and the two basses play an octave below the key.
 
-| Button | Preset | Synthesis |
-|--------|--------|-----------|
-| 1 | GrandPno | Multi-frame wavetable (piano harmonics + inharmonicity) |
-| 2 | NylonGtr | Multi-frame wavetable (plucked guitar) |
-| 3 | Violin | Multi-frame wavetable (bowed string + vibrato) |
-| 4 | PanFlute | Multi-frame wavetable (flute + breath noise) |
-| 5 | JazzOrg | Wavetable (drawbar organ + key click + rotary) |
-| 6 | FullOrg | Wavetable (pipe organ + rotary + unison) |
-| 7 | Accordion | Wavetable (reed harmonics + musette detuning) |
-| 8 | Clarinet | Wavetable (odd harmonics + vibrato) |
+### Bank 1: Keys & Folk
 
-### Bank 2: Synth / Electronic
+| Slot | Preset | Sound |
+|------|--------|-------|
+| 1 | GrandPno | Piano wavetable, two-stage decay (fast drop, ~7 s tail), darkens as it rings |
+| 2 | EPiano | FM electric piano: 1:1 body plus a 14:1 "tine", chorus |
+| 3 | JazzOrg | Hammond-style: drawbar wavetable, key click, percussion, fast Leslie |
+| 4 | ChurchOrg | Pipe organ: slow pipe speech, slight detune between ranks, reverb |
+| 5 | Accordion | Reed wavetable with musette detuning |
+| 6 | Harmonica | Blues harp with delayed hand vibrato |
+| 7 | NylonGtr | Plucked nylon guitar, two-stage decay |
+| 8 | Bells | Chowning FM bell (5:7 ratio), long inharmonic ring |
 
-| Button | Preset | Synthesis |
-|--------|--------|-----------|
-| 1 | SpacePad | Wavetable (choir + wide unison + slow evolve) |
-| 2 | FunkBass | Saw (resonance 240, filter sweep per note) |
-| 3 | SynthLead | Wavetable (pulse-saw hybrid + unison + vibrato) |
-| 4 | BellTone | FM (ratio 5, gentle, long ring) |
-| 5 | BitOrgan | Square (lo-fi chiptune, retro 8-bit) |
-| 6 | WahClav | Saw (auto-wah, resonance 220, fast filter sweep) |
-| 7 | Harmonica | Wavetable (blues harp + breath vibrato) |
-| 8 | Cello | Wavetable (deep bowed string + vibrato) |
+### Bank 2: Orchestral
 
-### Bank 3: Experimental / Wild
+| Slot | Preset | Sound |
+|------|--------|-------|
+| 1 | Violin | Bowed attack, ±22-cent vibrato fading in |
+| 2 | Cello | An octave down, warm, vibrato fading in |
+| 3 | Strings | Section: soft-string wavetable, unison, slow attack |
+| 4 | Flute | Breathy, gentle vibrato |
+| 5 | Clarinet | Odd-harmonic reed, no vibrato (classical style) |
+| 6 | Trumpet | Bright brass, stays brassy while held |
+| 7 | Brass | Section: unison, slower swell |
+| 8 | Choir | Vocal pad, unison, slow attack |
 
-| Button | Preset | Synthesis |
-|--------|--------|-----------|
-| 1 | SubBass | Triangle (deep sub, felt more than heard) |
-| 2 | Siren | Sine (extreme vibrato, wobbling pitch) |
-| 3 | Trumpet | Wavetable (warm brass + vibrato) |
-| 4 | Choir | Wavetable (vocal pad + unison) |
-| 5 | Pluck | Saw (sharp percussive, 100ms decay) |
-| 6 | Vox | Wavetable (haunting vocal, resonance formants) |
-| 7 | Brass | Wavetable (punchy stab, fast brightness close) |
-| 8 | RingMod | FM (ratio 8, metallic/industrial, feedback) |
+### Bank 3: Synth
+
+| Slot | Preset | Sound |
+|------|--------|-------|
+| 1 | SynthLead | Detuned unison saw, resonant filter, delay |
+| 2 | SpacePad | Wide unison pad, very slow attack and filter sweep, chorus |
+| 3 | FunkBass | Resonant saw "quack", an octave down, dry |
+| 4 | SubBass | Pure sine an octave down, dry |
+| 5 | Pluck | Short resonant saw pluck with delay |
+| 6 | WahClav | Funky clav with a fast resonant filter sweep, dry |
+| 7 | Chiptune | Square wave with 8-bit-style vibrato, bitcrusher |
+| 8 | RingMod | Inharmonic FM (ratio 3.53), metallic, delay |
 
 ## Controls
 
@@ -98,7 +100,7 @@ See [docs/matrix-map.md](docs/matrix-map.md) for the full key matrix layout.
 | Effect On/Off | Toggle current effect |
 | Panic | All notes off |
 | Rhythm Start/Stop | Toggle rhythm engine |
-| Rhythm 1-8 | Select rhythm pattern |
+| Rhythm 1-8 | Select rhythm pattern (also recalls its usual tempo) |
 
 ## USB MIDI
 
@@ -110,6 +112,10 @@ The keyboard auto-detects its connection:
 | Power bank / charger | Synth Only | Speaker active, no MIDI |
 
 The device appears as **"Synth Pico MIDI"** in DAWs and MIDI monitors. Sends note on/off, sustain (CC64), volume (CC7), and program changes.
+
+Choosing a preset sends its **General MIDI program number**, so a GM instrument on the computer switches to the matching sound (GrandPno -> Acoustic Grand Piano, Violin -> Violin, and so on; see `gmProgram` in `Presets.cpp`). No bank select is sent: GM Level 1 has no banks.
+
+The mode only switches once the connection has been stable for half a second, so a flaky cable doesn't cut notes off.
 
 ## Build
 
@@ -187,10 +193,9 @@ WaveTableData.h       Pre-generated wavetable data (14 instruments x 4 frames)
 
 | Resource | Used | Available | % |
 |----------|------|-----------|---|
-| Flash | 137 KB | 2,048 KB | 6% |
-| RAM | 21 KB | 264 KB | 7% |
-| CPU (idle) | ~11% | 100% | |
-| CPU (8 voices + reverb) | ~19% | 100% | |
+| Flash | 476 KB | 2,044 KB | 22% |
+| RAM | 54 KB | 256 KB | 20% |
+| CPU (8 voices + reverb) | not yet re-measured | 100% | see `cpu=` in the serial status line |
 
 ## Documentation
 

@@ -32,17 +32,26 @@ int main() {
   app.begin();                         // boot without host
   CHECK(wire() == "");
   app.tick(); CHECK(renderer.calls == 1);
-  host.up = true; app.tick();          // USB connect -> MidiOnly
-  CHECK(router.mode() == OutputMode::MidiOnly);
-  CHECK(wire() == "");                 // HEAD sent nothing on connect
-  CHECK(renderer.calls == 1);          // no rendering in MidiOnly
 
-  perf.handleControl(ControlType::InstrumentSelect, 1);   // JazzOrg(Vibrato) -> FullOrg(Chorus)
-  CHECK(wire() == "C0 01 00 | B0 17 02");                 // PC 1, CC23=Chorus
+  // A USB flicker shorter than the debounce doesn't switch modes.
+  host.up = true; clock.ms += 10; app.tick();
+  host.up = false; clock.ms += 10; app.tick();
+  host.up = true; clock.ms += 10; app.tick();
+  clock.ms += config::kModeSwitchDebounceMs - 1; app.tick();
+  CHECK(router.mode() == OutputMode::SynthOnly);
+  const int rendersBefore = renderer.calls;
+
+  clock.ms += 1; app.tick();           // connected for the full debounce -> MidiOnly
+  CHECK(router.mode() == OutputMode::MidiOnly);
+  CHECK(wire() == "");                 // nothing sent to the host on connect
+  CHECK(renderer.calls == rendersBefore);  // no rendering in MidiOnly
+
+  perf.handleControl(ControlType::InstrumentSelect, 1);   // GrandPno (Reverb) -> EPiano (Chorus)
+  CHECK(wire() == "C0 04 00 | B0 17 02");                 // GM program 5 "Electric Piano 1", CC23=Chorus
   perf.handleControl(ControlType::InstrumentSelect, 1);   // same preset again
-  CHECK(wire() == "C0 01 00");
-  perf.handleControl(ControlType::BankUp, 0);             // -> bank 1 slot 1 WahClav(Delay)
-  CHECK(wire() == "B0 00 01 | C0 09 00 | B0 17 04");
+  CHECK(wire() == "C0 04 00");
+  perf.handleControl(ControlType::BankUp, 0);             // -> bank 1 slot 1 Cello (Reverb)
+  CHECK(wire() == "C0 2A 00 | B0 17 03");                 // no bank select; GM program 43 "Cello"
   perf.handleControl(ControlType::VolumeDown, 0);
   CHECK(wire() == "B0 07 4F");                            // map(20480) = 79, as HEAD
   perf.handleControl(ControlType::OctaveUp, 0);
@@ -65,9 +74,11 @@ int main() {
   perf.handleControl(ControlType::Panic, 0);
   CHECK(wire() == "B0 78 00 | B0 7B 00");
 
-  host.up = false; app.tick();                            // unplug -> SynthOnly, synth resynced
+  host.up = false; app.tick();                            // unplug: not yet (debounce)
+  CHECK(router.mode() == OutputMode::MidiOnly);
+  clock.ms += config::kModeSwitchDebounceMs; app.tick();  // -> SynthOnly, synth resynced
   CHECK(router.mode() == OutputMode::SynthOnly);
   CHECK(wire() == "B0 78 00 | B0 7B 00");                 // MIDI sink told all-notes-off (no-op when unplugged)
-  CHECK(renderer.calls == 2);
+  CHECK(renderer.calls == rendersBefore + 1);
   return finish("midi_test");
 }

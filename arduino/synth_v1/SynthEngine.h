@@ -12,7 +12,7 @@
 #include "VoiceShape.h"
 
 // Polyphonic synth: allocates voices, mixes them with the drums, runs the
-// master effect (or the organ's rotary speaker) and writes to the audio output.
+// master effect and the organ's rotary speaker, and writes to the audio output.
 class SynthEngine final : public IAudioRenderer {
 public:
   explicit SynthEngine(AudioOutput &audioOutput);

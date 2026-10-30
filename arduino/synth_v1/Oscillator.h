@@ -53,7 +53,7 @@ inline int16_t sample(Waveform waveform, uint32_t phase, uint8_t wavetableIndex 
     case Waveform::Saw: {
       int32_t raw = static_cast<int32_t>(phase >> 16) - 32768;
       if (phaseStep > 0) {
-        raw -= (polyBlepQ16(phase, phaseStep) * 32768L) >> 16;
+        raw -= polyBlepQ16(phase, phaseStep) >> 1;  // residual scaled to +-32768
       }
       return static_cast<int16_t>(constrain(raw, -32768, 32767));
     }

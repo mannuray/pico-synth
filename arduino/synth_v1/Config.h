@@ -23,6 +23,13 @@ constexpr uint8_t kDebounceScans = 3;
 constexpr uint32_t kScanIntervalMs = 3;
 constexpr uint32_t kStatusIntervalMs = 1000;
 constexpr size_t kAudioBlockFrames = 64;
+// I2S output queue: 6 buffers x 64 stereo frames = 384 frames, ~8.7 ms of
+// key-to-sound latency (was 8 x 256 = ~46 ms). Raise the count if the audio
+// crackles (the main loop must refill a buffer every ~1.45 ms).
+constexpr size_t kI2SBufferCount = 6;
+constexpr size_t kI2SBufferFrames = 64;
+// USB connect/disconnect must hold this long before the output mode switches.
+constexpr uint32_t kModeSwitchDebounceMs = 500;
 
 constexpr int8_t kMinOctaveShift = -2;
 constexpr int8_t kMaxOctaveShift = 2;

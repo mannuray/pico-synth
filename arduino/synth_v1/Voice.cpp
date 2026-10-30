@@ -2,86 +2,75 @@
 #include "Oscillator.h"
 
 namespace {
-constexpr int32_t kOrganPercussionStartLevel = 22000;
-constexpr uint32_t kOrganPercussionDecayDivisor = 35u;
-constexpr int32_t kOrganClickStartLevel = 6000;
-constexpr int32_t kOrganClickDecayPerSample = 136;  // ~1ms decay at 44.1kHz
-constexpr int32_t kEnvelopeSnapThreshold = 64;
-constexpr int32_t kReleaseFloor = 64;
+constexpr int32_t kClickDecayPerSample = 136;          // ~1 ms key-click burst at 44.1 kHz
+constexpr int32_t kEnvelopeSnap = 64 << 15;            // ~-54 dB: treat as arrived
+constexpr int32_t kDecayKnee = kEnvelopeFull / 4;      // -12 dB: where decay2 takes over
+constexpr float kCentsToRatio = 0.000577623f;          // ln(2) / 1200
+
+uint32_t ratioStep(uint32_t phaseStep, uint16_t ratioX100) {
+  return static_cast<uint32_t>(min<uint64_t>(0xFFFFFFFFull, static_cast<uint64_t>(phaseStep) * ratioX100 / 100));
+}
+
+// Phase offset for FM: depth ~= 10x the modulation index. Wraps modulo 2^32 on purpose.
+uint32_t fmPhaseOffset(int32_t modulator, int32_t modLevel15, uint8_t depth) {
+  const int32_t scaledDepth = (modLevel15 * depth) >> 8;
+  return static_cast<uint32_t>(modulator * scaledDepth) * 16u;
+}
 }  // namespace
 
-void Voice::start(uint8_t midiNote, const Preset &preset, int16_t stereoPan, dsp::NoiseSource &noise) {
+void Voice::start(uint8_t keyNote, const Preset &preset, int16_t stereoPan, bool percussion, dsp::NoiseSource &noise) {
+  *this = Voice{};
   active_ = true;
-  midiNote_ = midiNote;
-  // Random start phase: prevents phasing artifacts when retriggering the same note.
-  phase_ = noise.next();
-  phaseStep_ = osc::noteToPhaseStep(midiNote);
-  modPhase_ = 0;
-  modPhaseStep_ = static_cast<uint32_t>(
-      min<uint64_t>(0xFFFFFFFFull,
-                    static_cast<uint64_t>(phaseStep_) *
-                        max<uint8_t>(1, preset.fmRatio)));
-  percussionPhase_ = 0;
-  percussionPhaseStep_ = phaseStep_ * 4u;
-
-  // FM pairs 2-3 (Algorithm 5 style).
-  if (preset.fm2Level > 0) {
-    fm2CarrierPhase_ = 0;
-    // Pair 2 carrier slightly detuned for richness (reuses detune field).
-    fm2CarrierPhaseStep_ = phaseStep_ +
-        ((phaseStep_ >> 10) * preset.detune);
-    fm2ModPhase_ = 0;
-    fm2ModPhaseStep_ = static_cast<uint32_t>(
-        min<uint64_t>(0xFFFFFFFFull,
-                      static_cast<uint64_t>(phaseStep_) *
-                          max<uint8_t>(1, preset.fm2Ratio)));
-  }
-  if (preset.fm3Level > 0) {
-    fm3CarrierPhase_ = 0;
-    fm3ModPhase_ = 0;
-    fm3ModPhaseStep_ = static_cast<uint32_t>(
-        min<uint64_t>(0xFFFFFFFFull,
-                      static_cast<uint64_t>(phaseStep_) *
-                          max<uint8_t>(1, preset.fm3Ratio)));
-  }
-
-  if (preset.unison) {
-    unisonPhase_[0] = 0;
-    unisonPhase_[1] = 0;
-  }
-
-  // Independent spectral envelope: used by FM depth and non-FM brightness movement.
-  // Uses exponential decay for natural brightness evolution.
-  if (preset.modDecayMs == 0 || preset.modulationDepth == 0) {
-    modLevel_ = 0;
-    modDecayStep_ = 0;
-  } else {
-    modLevel_ = 32767;
-    modDecayStep_ = msToEnvRate(preset.modDecayMs);
-  }
-  lastModOutput_ = 0;
-
-  if (preset.organ != nullptr) {
-    percussionLevel_ = kOrganPercussionStartLevel;
-    const uint32_t percussionDecaySamples = max<uint32_t>(1, config::kSampleRate / kOrganPercussionDecayDivisor);
-    percussionDecayStep_ = max<int32_t>(1, percussionLevel_ / static_cast<int32_t>(percussionDecaySamples));
-    clickLevel_ = kOrganClickStartLevel;
-  } else {
-    percussionLevel_ = 0;
-    percussionDecayStep_ = 0;
-    clickLevel_ = 0;
-  }
-
-  level_ = 0;
-  filterLow_ = 0;
-  filterBand_ = 0;
-
+  keyNote_ = keyNote;
   stereoPan_ = stereoPan;
 
-  // Per-voice vibrato: precompute step, random start phase so voices don't vibrate in sync.
-  vibratoStep_ = (preset.vibratoDepth > 0) ?
-      osc::hzToPhaseStep(2.0f + preset.vibratoRate * 0.024f) : 0;
-  vibratoPhase_ = noise.next();
+  const uint8_t pitchNote = static_cast<uint8_t>(constrain(keyNote + preset.octave * 12, 0, 127));
+  // Random start phase: prevents phasing artifacts when retriggering the same note.
+  phase_ = noise.next();
+  phaseStep_ = osc::noteToPhaseStep(pitchNote);
+
+  if (preset.unison) {
+    unisonPhase_[0] = noise.next();
+    unisonPhase_[1] = noise.next();
+  }
+
+  modPhaseStep_ = ratioStep(phaseStep_, preset.fmRatioX100);
+  if (preset.fm2Level > 0) {
+    fm2CarrierPhaseStep_ = phaseStep_ + ((phaseStep_ >> 10) * preset.detune);
+    fm2ModPhaseStep_ = ratioStep(phaseStep_, preset.fm2RatioX100);
+  }
+  if (preset.fm3Level > 0) {
+    fm3ModPhaseStep_ = ratioStep(phaseStep_, preset.fm3RatioX100);
+  }
+
+  // Spectral envelope: starts bright, settles at modSustain over modDecayMs.
+  modLevel_ = kEnvelopeFull;
+  if (preset.modDecayMs > 0) {
+    modSustain_ = static_cast<int32_t>(preset.modSustain) << 22;
+    modDecayRate_ = msToEnvRate(preset.modDecayMs);
+  }
+
+  if (preset.organ != nullptr) {
+    const OrganTraits &organ = *preset.organ;
+    if (percussion && organ.percussionHarmonic > 0) {
+      percussionPhaseStep_ = phaseStep_ * organ.percussionHarmonic;
+      percussionLevel_ = kEnvelopeFull;
+      percussionDecayRate_ = msToEnvRate(organ.percussionDecayMs);
+      percussionPeak_ = organ.percussionLevel;
+    }
+    clickLevel_ = organ.clickLevel;
+  }
+
+  if (preset.vibratoCents > 0) {
+    vibratoStep_ = osc::hzToPhaseStep(preset.vibratoRateX10 / 10.0f);
+    vibratoDepthStep_ = static_cast<uint32_t>(phaseStep_ * (preset.vibratoCents * kCentsToRatio));
+    vibratoPhase_ = noise.next();  // voices don't vibrate in sync
+    if (preset.vibratoDelayMs > 0) {
+      vibratoFadeStep_ = max<int32_t>(1, 32767 / static_cast<int32_t>(preset.vibratoDelayMs * (config::kSampleRate / 1000)));
+    } else {
+      vibratoFade_ = 32767;
+    }
+  }
 
   stage_ = Stage::Attack;
 }
@@ -90,22 +79,76 @@ int32_t Voice::render(const Preset &preset, const VoiceShape &shape, const Voice
   if (!active_) {
     return 0;
   }
+  advanceEnvelope(shape);
+  if (!active_) {
+    return 0;
+  }
 
-  // Exponential envelope: fast initial movement, natural tail.
+  const int32_t modLevel15 = advanceSpectralEnvelope();
+  int32_t sample = oscillate(preset, currentPhaseStep(modulation), modLevel15);
+  sample += organSounds(noise);
+  if (modulation.gainQ8 != 256) {
+    sample = (sample * modulation.gainQ8) >> 8;
+  }
+
+  const int32_t filtered = filter_.process(sample, filterCutoff(preset, shape, modLevel15), shape.resonanceDamping);
+  const int32_t out = (filtered * (level_ >> 15)) >> 15;
+  return (out * preset.gain) >> 7;
+}
+
+// Moves the spectral envelope toward its sustain level; returns it as Q15.
+int32_t Voice::advanceSpectralEnvelope() {
+  if (modDecayRate_ > 0 && modLevel_ > modSustain_) {
+    modLevel_ -= max<int32_t>(1, scaleByRate(modLevel_ - modSustain_, modDecayRate_));
+  }
+  return modLevel_ >> 15;
+}
+
+// Organ key click (noise burst at note onset) and percussion (a decaying sine
+// at the 2nd or 3rd harmonic). Zero for non-organ presets.
+int32_t Voice::organSounds(dsp::NoiseSource &noise) {
+  int32_t sample = 0;
+  if (clickLevel_ > 0) {
+    const int16_t noiseVal = static_cast<int16_t>(noise.next() >> 16);
+    sample += (static_cast<int32_t>(noiseVal) * clickLevel_) >> 15;
+    clickLevel_ = max<int32_t>(0, clickLevel_ - kClickDecayPerSample);
+  }
+  if (percussionLevel_ > kEnvelopeSnap) {
+    percussionPhase_ += percussionPhaseStep_;
+    const int32_t envelope = ((percussionLevel_ >> 15) * percussionPeak_) >> 15;
+    sample += (osc::sine(percussionPhase_) * envelope) >> 15;
+    percussionLevel_ -= scaleByRate(percussionLevel_, percussionDecayRate_);
+  }
+  return sample;
+}
+
+// The cutoff follows the amplitude envelope, the spectral envelope and the
+// note (+1 per 4 semitones above C3).
+int32_t Voice::filterCutoff(const Preset &preset, const VoiceShape &shape, int32_t modLevel15) const {
+  const int32_t envAmount = ((level_ >> 15) * shape.filterEnvDepth) >> 15;
+  const int32_t spectralEnv = (modLevel15 * preset.modulationDepth) >> 15;
+  const int32_t noteBrightness = (static_cast<int32_t>(keyNote_) - 48) >> 2;
+  return constrain(shape.baseCutoff + (envAmount >> 1) + spectralEnv + noteBrightness, 10, 230);
+}
+
+void Voice::advanceEnvelope(const VoiceShape &shape) {
   switch (stage_) {
-    case Stage::Attack: {
-      const int32_t distance = 32767 - level_;
-      level_ += max<int32_t>(1, (distance * shape.attackRate) >> 15);
-      if (level_ >= 32767 - kEnvelopeSnapThreshold) {
-        level_ = 32767;
-        stage_ = (shape.sustainLevel < 32767) ? Stage::Decay : Stage::Sustain;
+    case Stage::Attack:
+      level_ += max<int32_t>(1, scaleByRate(kEnvelopeFull - level_, shape.attackRate));
+      if (level_ >= kEnvelopeFull - kEnvelopeSnap) {
+        level_ = kEnvelopeFull;
+        stage_ = (shape.sustainLevel < kEnvelopeFull) ? Stage::Decay : Stage::Sustain;
       }
       break;
-    }
     case Stage::Decay: {
-      const int32_t distance = level_ - shape.sustainLevel;
-      level_ -= max<int32_t>(1, (distance * shape.decayRate) >> 15);
-      if (level_ <= shape.sustainLevel + kEnvelopeSnapThreshold) {
+      // Two-stage decay: a quick initial drop, then the slower decay2 tail below the knee.
+      const uint32_t rate = level_ > kDecayKnee ? shape.decayRate : shape.decay2Rate;
+      level_ -= max<int32_t>(1, scaleByRate(level_ - shape.sustainLevel, rate));
+      if (level_ <= shape.sustainLevel + kEnvelopeSnap) {
+        if (shape.sustainLevel == 0) {
+          reset();  // decayed to silence while held (piano, guitar)
+          return;
+        }
         level_ = shape.sustainLevel;
         stage_ = Stage::Sustain;
       }
@@ -114,129 +157,81 @@ int32_t Voice::render(const Preset &preset, const VoiceShape &shape, const Voice
     case Stage::Sustain:
       level_ = shape.sustainLevel;
       break;
-    case Stage::Release: {
-      level_ -= max<int32_t>(1, (level_ * shape.releaseRate) >> 15);
-      if (level_ <= kReleaseFloor) {
-        *this = Voice{};
-        return 0;
+    case Stage::Release:
+      level_ -= max<int32_t>(1, scaleByRate(level_, shape.releaseRate));
+      if (level_ <= kEnvelopeSnap) {
+        reset();
       }
       break;
-    }
     case Stage::Off:
-      *this = Voice{};
-      return 0;
+      reset();
+      break;
   }
+}
 
-  // Exponential spectral modulation decay (brightness evolution).
-  if (modDecayStep_ > 0) {
-    modLevel_ -= max<int32_t>(1, (modLevel_ * modDecayStep_) >> 15);
-    if (modLevel_ < kReleaseFloor) {
-      modLevel_ = 0;
-    }
-  }
-  if (percussionDecayStep_ > 0) {
-    percussionLevel_ -= percussionDecayStep_;
-    if (percussionLevel_ < 0) {
-      percussionLevel_ = 0;
-    }
-  }
-  // Key click: broadband noise burst for organ attack realism.
-  if (clickLevel_ > 0) {
-    clickLevel_ -= kOrganClickDecayPerSample;
-    if (clickLevel_ < 0) {
-      clickLevel_ = 0;
-    }
-  }
-
+uint32_t Voice::currentPhaseStep(const VoiceModulation &modulation) {
   uint32_t phaseStep = phaseStep_;
 
-  // Built-in per-preset vibrato (independent of global effect toggle).
+  // Built-in vibrato, depth in cents, fading in over the vibrato delay.
   if (vibratoStep_ > 0) {
     vibratoPhase_ += vibratoStep_;
-    const int32_t vib = osc::sample(Waveform::Sine, vibratoPhase_);
-    phaseStep += static_cast<uint32_t>((vib * preset.vibratoDepth) >> 6);
+    if (vibratoFade_ < 32767) {
+      vibratoFade_ = min<int32_t>(32767, vibratoFade_ + vibratoFadeStep_);
+    }
+    const int32_t wobble = (osc::sine(vibratoPhase_) * vibratoFade_) >> 15;
+    // wobble * depth / 32768, split so each product fits in 32 bits.
+    phaseStep += static_cast<uint32_t>((wobble >> 4) * static_cast<int32_t>(vibratoDepthStep_ >> 11));
   }
 
-  phaseStep += static_cast<uint32_t>(modulation.pitchOffset);
+  // Effect pitch modulation (vibrato/chorus effects), relative to the note.
+  if (modulation.pitchFracQ16 != 0) {
+    phaseStep += static_cast<uint32_t>((static_cast<int32_t>(phaseStep_ >> 12) * modulation.pitchFracQ16) >> 4);
+  }
+  return phaseStep;
+}
 
-  // Multi-frame wavetable position: modLevel 32767=bright → framePos 0,
-  // modLevel 0=dark → framePos 32767. Drives frame crossfading in sampleWave.
-  const int32_t framePos = (preset.modDecayMs > 0) ? (32767 - modLevel_) : 0;
+int32_t Voice::oscillate(const Preset &preset, uint32_t phaseStep, int32_t modLevel15) {
+  // Wavetables move from the bright first frame toward the dark last frame
+  // as the spectral envelope falls; with no spectral decay they stay bright.
+  const int32_t framePos = modDecayRate_ > 0 ? (32767 - modLevel15) : 0;
 
-  int32_t sample = 0;
   if (preset.waveform == Waveform::FM) {
-    // Pair 1 (body): carrier at base frequency, modulator at fmRatio.
-    const int32_t fbMod = (static_cast<int32_t>(lastModOutput_) * preset.fmFeedback) >> 5;
-    modPhase_ += (modPhaseStep_ + fbMod);
-    int32_t modulator = osc::sample(Waveform::Sine, modPhase_);
-    lastModOutput_ = modulator;
-    const int32_t depth1 = (static_cast<int64_t>(modLevel_) * preset.fmDepth) >> 8;
-    const uint32_t phaseMod1 = static_cast<uint32_t>((static_cast<int64_t>(modulator) * depth1) << 7);
+    // Pair 1 (body): carrier at pitch, modulator at fmRatioX100 / 100, optional feedback.
+    const int32_t feedback = (static_cast<int32_t>(lastModOutput_) * preset.fmFeedback) >> 5;
+    modPhase_ += modPhaseStep_ + static_cast<uint32_t>(feedback);
+    const int32_t modulator = osc::sine(modPhase_);
+    lastModOutput_ = static_cast<int16_t>(modulator);
     phase_ += phaseStep;
-    sample = osc::sample(Waveform::Sine, phase_ + phaseMod1);
+    int32_t sample = osc::sine(phase_ + fmPhaseOffset(modulator, modLevel15, preset.fmDepth));
 
-    // Pair 2 (richness): slightly detuned carrier, independent modulator.
+    // Pair 2 (richness): slightly detuned carrier, its own modulator.
     if (preset.fm2Level > 0) {
       fm2ModPhase_ += fm2ModPhaseStep_;
-      const int32_t mod2 = osc::sample(Waveform::Sine, fm2ModPhase_);
-      const int32_t depth2 = (static_cast<int64_t>(modLevel_) * preset.fm2Depth) >> 8;
-      const uint32_t phaseMod2 = static_cast<uint32_t>((static_cast<int64_t>(mod2) * depth2) << 7);
+      const int32_t mod2 = osc::sine(fm2ModPhase_);
       fm2CarrierPhase_ += fm2CarrierPhaseStep_;
-      sample += (osc::sample(Waveform::Sine, fm2CarrierPhase_ + phaseMod2) *
-                 static_cast<int32_t>(preset.fm2Level)) >> 8;
+      sample += (osc::sine(fm2CarrierPhase_ + fmPhaseOffset(mod2, modLevel15, preset.fm2Depth)) * preset.fm2Level) >> 8;
     }
 
-    // Pair 3 (tine/bell): carrier at base freq, high-ratio modulator for metallic attack.
+    // Pair 3 (e.g. an electric-piano tine): carrier at pitch, high-ratio modulator.
     if (preset.fm3Level > 0) {
       fm3ModPhase_ += fm3ModPhaseStep_;
-      const int32_t mod3 = osc::sample(Waveform::Sine, fm3ModPhase_);
-      const int32_t depth3 = (static_cast<int64_t>(modLevel_) * preset.fm3Depth) >> 8;
-      const uint32_t phaseMod3 = static_cast<uint32_t>((static_cast<int64_t>(mod3) * depth3) << 7);
+      const int32_t mod3 = osc::sine(fm3ModPhase_);
       fm3CarrierPhase_ += phaseStep;
-      sample += (osc::sample(Waveform::Sine, fm3CarrierPhase_ + phaseMod3) *
-                 static_cast<int32_t>(preset.fm3Level)) >> 8;
+      sample += (osc::sine(fm3CarrierPhase_ + fmPhaseOffset(mod3, modLevel15, preset.fm3Depth)) * preset.fm3Level) >> 8;
     }
-  } else if (preset.unison) {
-    // Unison: sum three oscillators (base, slightly detuned up, slightly detuned down)
-    phase_ += phaseStep;
-    const uint32_t detuneStep = (phaseStep >> 10) * preset.detune;
-    unisonPhase_[0] += (phaseStep + detuneStep);
-    unisonPhase_[1] += (phaseStep - detuneStep);
+    return sample;
+  }
 
-    sample = osc::sample(preset.waveform, phase_, preset.wavetableIndex, phaseStep, framePos);
+  phase_ += phaseStep;
+  if (preset.unison) {
+    // Three oscillators: at pitch, detuned up, detuned down.
+    const uint32_t detuneStep = (phaseStep >> 10) * preset.detune;
+    unisonPhase_[0] += phaseStep + detuneStep;
+    unisonPhase_[1] += phaseStep - detuneStep;
+    int32_t sample = osc::sample(preset.waveform, phase_, preset.wavetableIndex, phaseStep, framePos);
     sample += osc::sample(preset.waveform, unisonPhase_[0], preset.wavetableIndex, phaseStep + detuneStep, framePos);
     sample += osc::sample(preset.waveform, unisonPhase_[1], preset.wavetableIndex, phaseStep - detuneStep, framePos);
-    sample /= 3;
-  } else {
-    phase_ += phaseStep;
-    sample = osc::sample(preset.waveform, phase_, preset.wavetableIndex, phaseStep, framePos);
+    return sample / 3;
   }
-
-  // Organ key click: inject filtered noise burst at note onset.
-  if (clickLevel_ > 0) {
-      const int16_t noiseVal = static_cast<int16_t>(noise.next() >> 16);
-    sample += (static_cast<int32_t>(noiseVal) * clickLevel_) >> 15;
-  }
-
-  if (preset.organ != nullptr && percussionLevel_ > 0) {
-    percussionPhase_ += percussionPhaseStep_;
-    const int32_t percussion = (static_cast<int32_t>(osc::sample(Waveform::Sine, percussionPhase_)) * percussionLevel_) >> 15;
-    sample += percussion;
-  }
-
-  if (modulation.gainQ8 != 256) {
-    sample = (sample * modulation.gainQ8) >> 8;
-  }
-
-  const int32_t envAmount = (level_ * shape.filterEnvDepth) >> 15;
-  const int32_t spectralEnv = (static_cast<int64_t>(modLevel_) * preset.modulationDepth) >> 15;
-  // Note-dependent brightness: higher notes get brighter filter cutoff (+1 per 4 semitones above C3).
-  const int32_t noteBrightness = (static_cast<int32_t>(midiNote_) - 48) >> 2;
-  const int32_t filterCutoff = constrain(shape.baseCutoff + (envAmount >> 1) + spectralEnv + noteBrightness, 10, 188);
-  filterLow_ += (filterCutoff * filterBand_) >> 8;
-  const int32_t filterHigh = sample - filterLow_ - ((filterBand_ * shape.resonanceDamping) >> 8);
-  filterBand_ += (filterCutoff * filterHigh) >> 8;
-  sample = filterLow_;
-
-  return (sample * level_) >> 15;
+  return osc::sample(preset.waveform, phase_, preset.wavetableIndex, phaseStep, framePos);
 }

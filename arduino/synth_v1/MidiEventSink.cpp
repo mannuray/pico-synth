@@ -1,5 +1,6 @@
 #include "MidiEventSink.h"
 #include "Config.h"
+#include "Presets.h"
 
 #include <MIDIUSB.h>
 
@@ -8,7 +9,6 @@ constexpr uint8_t kMidiChannel = 0;
 
 // Control change numbers. 20-25 are undefined in the MIDI spec and used for
 // this instrument's own controls.
-constexpr uint8_t kCcBankSelect = 0;
 constexpr uint8_t kCcVolume = 7;
 constexpr uint8_t kCcTempo = 20;
 constexpr uint8_t kCcOctave = 21;
@@ -91,10 +91,11 @@ void MidiEventSink::handleEvent(const KeyboardEvent &event) {
 void MidiEventSink::handleCommand(const PerformanceCommand &command) {
   switch (command.type) {
     case CommandType::SelectBank:
-      sendControlChange(kCcBankSelect, command.value);
+      // Not sent: GM Level 1 has no banks, and on GS/GM2 modules a bank number
+      // would pick variation sounds. The program change identifies the sound.
       break;
     case CommandType::SelectPreset:
-      sendProgramChange(static_cast<uint8_t>(command.value));
+      sendProgramChange(presets::at(static_cast<uint8_t>(command.value)).gmProgram);
       break;
     case CommandType::Sustain:
       // Standard MIDI treats >= 64 as on.

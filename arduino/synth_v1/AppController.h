@@ -42,7 +42,10 @@ private:
   uint16_t micLevel_ = 0;
   uint32_t lastScanMs_ = 0;
   uint32_t lastStatusMs_ = 0;
+  OutputMode pendingMode_ = OutputMode::SynthOnly;
+  uint32_t pendingSinceMs_ = 0;
 
   OutputMode detectOutputMode();
+  void updateOutputMode(uint32_t nowMs);
   void processMatrix(uint32_t nowMs);
 };

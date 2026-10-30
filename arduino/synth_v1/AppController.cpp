@@ -23,6 +23,7 @@ AppController::AppController(IKeyMatrix &keyMatrix,
 
 void AppController::begin() {
   router_.setMode(detectOutputMode());
+  pendingMode_ = router_.mode();
   performance_.begin();
   if (router_.synthActive()) {
     performance_.syncOutputs();
@@ -36,11 +37,7 @@ void AppController::begin() {
 void AppController::tick() {
   const uint32_t now = clock_.nowMs();
 
-  // The synth ignores commands while it isn't an output, so bring it up to
-  // date when it becomes one. MIDI hosts keep their own state; send them nothing.
-  if (router_.setMode(detectOutputMode()) && router_.synthActive()) {
-    performance_.syncOutputs();
-  }
+  updateOutputMode(now);
 
   if (now - lastScanMs_ >= config::kScanIntervalMs) {
     processMatrix(now);
@@ -69,6 +66,30 @@ void AppController::printStatus() const {
                                        router_.mode(),
                                        micLevel_,
                                        cpuMeter_.loadPercent()});
+}
+
+// Switches mode only once the USB state has held for kModeSwitchDebounceMs,
+// so a flickering connection doesn't cut notes off by flipping back and forth.
+void AppController::updateOutputMode(uint32_t nowMs) {
+  const OutputMode detected = detectOutputMode();
+  if (detected == router_.mode()) {
+    pendingMode_ = detected;
+    return;
+  }
+  if (detected != pendingMode_) {
+    pendingMode_ = detected;
+    pendingSinceMs_ = nowMs;
+    return;
+  }
+  if (nowMs - pendingSinceMs_ < config::kModeSwitchDebounceMs) {
+    return;
+  }
+  router_.setMode(detected);
+  // The synth ignores commands while it isn't an output, so bring it up to
+  // date when it becomes one. MIDI hosts keep their own state; send them nothing.
+  if (router_.synthActive()) {
+    performance_.syncOutputs();
+  }
 }
 
 // Computer connected = MidiOnly, power only = SynthOnly.

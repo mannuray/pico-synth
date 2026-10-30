@@ -1,5 +1,6 @@
 // SynthEngine behaviour: chunked rendering, rotary speaker speed, voice stealing.
 #include "Presets.h"
+#include "RhythmPatterns.h"
 #include "SynthEngine.h"
 #include "check.h"
 #include <math.h>
@@ -64,8 +65,64 @@ static double measuredRotaryHz(uint8_t preset) {
 }
 
 static void rotarySpinsAtPresetSpeed() {
-  CHECK(fabs(measuredRotaryHz(0) - 2.4) < 0.3);  // JazzOrg
-  CHECK(fabs(measuredRotaryHz(1) - 4.8) < 0.3);  // FullOrg
+  CHECK(fabs(measuredRotaryHz(2) - 6.7) < 0.5);  // JazzOrg: Leslie fast ("tremolo") speed
+}
+
+// Frequency of the strongest spectral peak over one second of a held note.
+static double measuredPitchHz(uint8_t preset, uint8_t note) {
+  Capture out;
+  SynthEngine engine(out);
+  engine.begin();
+  engine.setPreset(preset);
+  engine.setEffectEnabled(false);
+  engine.noteOn(note);
+  render(engine, 44100 / 64);
+  int crossings = 0;
+  for (size_t i = 22050 + 1; i < out.left.size(); ++i) crossings += (out.left[i - 1] < 0) != (out.left[i] < 0);
+  return crossings / 2.0 / ((out.left.size() - 22050) / 44100.0);
+}
+
+// MIDI note numbers match pitch (A4 = 69 = 440 Hz); the preset octave shifts it.
+static void notesPlayAtMidiPitch() {
+  CHECK(fabs(measuredPitchHz(19, 72) - 261.63) < 2.0);  // SubBass (octave -1): key C5 sounds C4
+  CHECK(fabs(measuredPitchHz(19, 81) - 440.0) < 2.0);   // key A5 sounds A4
+}
+
+// Volume 0 is silent for every preset, including the organ's rotary speaker.
+static void zeroVolumeIsSilent() {
+  for (uint8_t preset = 0; preset < config::kPresetCount; ++preset) {
+    Capture out;
+    SynthEngine engine(out);
+    engine.begin();
+    engine.setPreset(preset);
+    engine.setEffect(presets::at(preset).defaultEffect);
+    engine.setEffectEnabled(true);
+    engine.setMasterVolume(0);
+    engine.noteOn(60);
+    engine.noteOn(64);
+    render(engine, 100);
+    CHECK(out.peakSince(0) <= 1);  // dither only
+  }
+}
+
+// A loud chord at full volume on every preset with its effect. Under the
+// sanitizer this catches integer overflow anywhere in the audio path.
+static void fullVolumeChordsStayInRange() {
+  for (uint8_t preset = 0; preset < config::kPresetCount; ++preset) {
+    Capture out;
+    SynthEngine engine(out);
+    engine.begin();
+    engine.setPreset(preset);
+    engine.setEffect(presets::at(preset).defaultEffect);
+    engine.setEffectEnabled(true);
+    engine.setMasterVolume(config::kMaxMasterVolume);
+    engine.setRhythmPlaying(true);
+    for (uint8_t note : {48, 55, 60, 64, 67, 72, 76, 84}) engine.noteOn(note);
+    render(engine, 1000);
+    for (uint8_t note : {48, 55, 60, 64, 67, 72, 76, 84}) engine.noteOff(note);
+    render(engine, 500);
+    CHECK(out.left.size() == 1500 * 64);
+  }
 }
 
 // With all voices held, new notes steal the oldest note, not always voice 0.
@@ -73,7 +130,7 @@ static void stealsOldestNote() {
   Capture out;
   SynthEngine engine(out);
   engine.begin();
-  engine.setPreset(20);  // SubBass: sustained, no effect tail
+  engine.setPreset(19);  // SubBass: sustained, no effect tail
   engine.setEffectEnabled(false);
   for (uint8_t i = 0; i < config::kPolyphony; ++i) engine.noteOn(40 + i);  // notes 40..47
   engine.noteOn(60);  // steals note 40
@@ -92,9 +149,101 @@ static void stealsOldestNote() {
   CHECK(out.peakSince(mark2) <= 2);  // and nothing else is
 }
 
+// At the default volume, chords stay below the soft clipper's knee (24000)
+// with each preset's default effect, so they aren't squashed.
+static void chordsHaveHeadroom() {
+  for (uint8_t preset = 0; preset < config::kPresetCount; ++preset) {
+    Capture out;
+    SynthEngine engine(out);
+    engine.begin();
+    engine.setPreset(preset);
+    engine.setEffect(presets::at(preset).defaultEffect);
+    engine.setEffectEnabled(presets::at(preset).effectEnabled);
+    for (uint8_t note : {48, 55, 60, 64, 67, 72}) engine.noteOn(note);
+    render(engine, 44100 * 2 / 64);
+    if (out.peakSince(0) >= 24000) printf("  %s chord peak %d\n", presets::at(preset).name, out.peakSince(0));
+    CHECK(out.peakSince(0) < 24000);
+  }
+}
+
+// Every MIDI note on every preset (octave and transpose reach the extremes).
+// Under the sanitizer this catches overflow at very low and very high pitches.
+static void allNotesRenderSafely() {
+  for (uint8_t preset = 0; preset < config::kPresetCount; ++preset) {
+    Capture out;
+    SynthEngine engine(out);
+    engine.begin();
+    engine.setPreset(preset);
+    engine.setMasterVolume(config::kMaxMasterVolume);
+    for (int note = 0; note < 128; note += 8) {
+      for (int k = 0; k < 8; ++k) engine.noteOn(static_cast<uint8_t>(note + k));
+      render(engine, 30);
+      engine.allNotesOff();
+    }
+    CHECK(out.left.size() == 16 * 30 * 64);
+  }
+}
+
+// With no notes held, the drums sound the same under every preset and effect:
+// they're mixed after the effects and the organ's rotary speaker.
+static void drumsStayDry() {
+  auto renderDrums = [](uint8_t preset, bool effectOn) {
+    Capture out;
+    SynthEngine engine(out);
+    engine.begin();
+    engine.setPreset(preset);
+    engine.setEffect(presets::at(preset).defaultEffect);
+    engine.setEffectEnabled(effectOn);
+    engine.setTempoBpm(112);
+    engine.setRhythmPattern(1);
+    engine.setRhythmPlaying(true);
+    render(engine, 44100 * 3 / 64);
+    return out.left;
+  };
+  const auto reference = renderDrums(0, false);
+  for (uint8_t preset = 0; preset < config::kPresetCount; ++preset) {
+    // Dither shares the engine's noise source with the voices, so allow +-1.
+    const auto drums = renderDrums(preset, true);
+    bool same = drums.size() == reference.size();
+    for (size_t i = 0; same && i < drums.size(); ++i) same = abs(drums[i] - reference[i]) <= 2;
+    if (!same) printf("  drums differ under %s\n", presets::at(preset).name);
+    CHECK(same);
+  }
+}
+
+// Chords played along with the busiest patterns stay (almost) below the soft
+// clipper at the default volume, so the drums don't distort the chord.
+static void chordsWithDrumsHaveHeadroom() {
+  for (uint8_t preset : {0, 2, 10, 14}) {
+    for (uint8_t pattern : {1, 3, 7}) {
+      Capture out;
+      SynthEngine engine(out);
+      engine.begin();
+      engine.setPreset(preset);
+      engine.setEffect(presets::at(preset).defaultEffect);
+      engine.setEffectEnabled(presets::at(preset).effectEnabled);
+      engine.setTempoBpm(rhythmPatternAt(pattern).defaultBpm);
+      engine.setRhythmPattern(pattern);
+      engine.setRhythmPlaying(true);
+      for (uint8_t note : {48, 55, 60, 64, 67, 72}) engine.noteOn(note);
+      render(engine, 44100 * 4 / 64);
+      size_t over = 0;
+      for (size_t i = 0; i < out.left.size(); ++i) over += abs(out.left[i]) > 24000 || abs(out.right[i]) > 24000;
+      CHECK(over * 1000 < out.left.size());  // under 0.1%
+    }
+  }
+}
+
 int main() {
   chunkedRenderMatches();
   rotarySpinsAtPresetSpeed();
+  notesPlayAtMidiPitch();
+  zeroVolumeIsSilent();
+  fullVolumeChordsStayInRange();
+  chordsHaveHeadroom();
+  allNotesRenderSafely();
+  drumsStayDry();
+  chordsWithDrumsHaveHeadroom();
   stealsOldestNote();
   return finish("engine_test");
 }

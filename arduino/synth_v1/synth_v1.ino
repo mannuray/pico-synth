@@ -45,7 +45,7 @@ void setup() {
   Serial.println();
   Serial.println("synth_v1");
   Serial.println("I2S: GP18 BCLK, GP19 LRCLK, GP20 DIN");
-  Serial.println("ADC: GP26");
+  Serial.println("ADC: GP27");
   app.printStatus();
 }
 

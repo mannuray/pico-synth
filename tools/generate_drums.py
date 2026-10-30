@@ -13,7 +13,7 @@ Uses proper drum synthesis models:
 import math
 import struct
 
-SAMPLE_RATE = 22050  # Half rate for drums (saves space, sounds fine)
+SAMPLE_RATE = 44100  # Full rate: cymbals need the 6-16 kHz "sizzle" a 22 kHz render can't hold
 OUTPUT_RATE = 44100  # Playback rate of the synth engine
 
 
@@ -22,9 +22,9 @@ def generate_sine(freq, duration_s, sample_rate, amplitude=1.0):
     return [amplitude * math.sin(2 * math.pi * freq * i / sample_rate) for i in range(n_samples)]
 
 
-def generate_noise(duration_s, sample_rate, amplitude=1.0):
+def generate_noise(duration_s, sample_rate, amplitude=1.0, seed=42):
     import random
-    random.seed(42)
+    random.seed(seed)
     n_samples = int(duration_s * sample_rate)
     return [amplitude * (random.random() * 2.0 - 1.0) for _ in range(n_samples)]
 
@@ -132,6 +132,33 @@ def resample(samples, from_rate, to_rate):
 
 # ── Drum synthesis models ──────────────────────────────────────────────────
 
+# Six detuned square waves, the classic analog drum-machine recipe for a
+# metallic, inharmonic cymbal tone (frequencies in the spirit of the TR-808).
+METAL_FREQS = [205.3, 304.4, 369.6, 522.7, 540.0, 800.0]
+
+
+def metal_bank(dur, sample_rate, freq_scale=1.0):
+    n = int(dur * sample_rate)
+    out = [0.0] * n
+    for f in METAL_FREQS:
+        f *= freq_scale
+        for i in range(n):
+            out[i] += 1.0 if math.sin(2 * math.pi * f * i / sample_rate) > 0 else -1.0
+    return [v / len(METAL_FREQS) for v in out]
+
+
+def make_hat(dur, decay_ms, seed):
+    """Hi-hat: metal bank + noise, high-passed so only the 'chick' and sizzle remain."""
+    metal = metal_bank(dur, SAMPLE_RATE)
+    noise = generate_noise(dur, SAMPLE_RATE, 1.0, seed)
+    result = mix(metal, noise, 0.55)
+    for _ in range(3):  # steeper high-pass: keep roughly 6 kHz and up
+        result = high_pass(result, 6000, SAMPLE_RATE)
+    for _ in range(2):  # roll off the very top so the sizzle sits around 6-12 kHz
+        result = low_pass(result, 11000, SAMPLE_RATE)
+    result = apply_envelope(result, 0.2, decay_ms, SAMPLE_RATE)
+    return normalize(result)
+
 def make_kick():
     """808-style kick: pitched sine body with sweep + click transient."""
     dur = 0.25  # 250ms
@@ -160,21 +187,23 @@ def make_kick():
 
 def make_snare():
     """Snare: body tone + noise burst + snare wire tail."""
-    dur = 0.2  # 200ms
+    dur = 0.3  # 300ms
     n = int(dur * SAMPLE_RATE)
 
-    # Body: 200Hz tone, fast decay
-    body_env = apply_envelope([1.0] * n, 0.3, 40, SAMPLE_RATE)
-    body = [body_env[i] * math.sin(2 * math.pi * 200 * i / SAMPLE_RATE) for i in range(n)]
+    # Body: two drum-head modes (~185 Hz and ~330 Hz), fast decay
+    body_env = apply_envelope([1.0] * n, 0.3, 60, SAMPLE_RATE)
+    body = [body_env[i] * (math.sin(2 * math.pi * 185 * i / SAMPLE_RATE) +
+                           0.5 * math.sin(2 * math.pi * 330 * i / SAMPLE_RATE)) for i in range(n)]
 
     # Noise crack: broadband, sharp attack
     noise = generate_noise(dur, SAMPLE_RATE, 1.0)
+    noise = low_pass(low_pass(noise, 7000, SAMPLE_RATE), 7000, SAMPLE_RATE)
     noise = apply_envelope(noise, 0.2, 120, SAMPLE_RATE)
 
     # Snare wire: bandpassed noise, longer tail
     wire = generate_noise(dur, SAMPLE_RATE, 0.6)
-    wire = bandpass(wire, 2000, 8000, SAMPLE_RATE)
-    wire = apply_envelope(wire, 5, 180, SAMPLE_RATE)
+    wire = bandpass(wire, 2000, 7000, SAMPLE_RATE)
+    wire = apply_envelope(wire, 5, 260, SAMPLE_RATE)
 
     # Mix: body for punch, noise for crack, wire for sizzle
     result = [0.0] * n
@@ -185,49 +214,13 @@ def make_snare():
 
 
 def make_closed_hat():
-    """Closed hi-hat: metallic ring modulation + filtered noise."""
-    dur = 0.06  # 60ms
-    n = int(dur * SAMPLE_RATE)
-
-    # Metallic: two detuned high-freq sines ring-modulated
-    metal = [0.0] * n
-    for i in range(n):
-        t = i / SAMPLE_RATE
-        f1 = math.sin(2 * math.pi * 4250 * t)
-        f2 = math.sin(2 * math.pi * 5380 * t)
-        f3 = math.sin(2 * math.pi * 6800 * t)
-        metal[i] = f1 * f2 + f3 * 0.4
-    metal = apply_envelope(metal, 0.1, 40, SAMPLE_RATE)
-
-    # Noise: high-passed for sizzle
-    noise = generate_noise(dur, SAMPLE_RATE, 0.8)
-    noise = high_pass(noise, 5000, SAMPLE_RATE)
-    noise = apply_envelope(noise, 0.1, 35, SAMPLE_RATE)
-
-    result = mix(metal, noise, 0.5)
-    return normalize(result)
+    """Closed hi-hat: short and tight."""
+    return make_hat(0.09, 45, 7)
 
 
 def make_open_hat():
-    """Open hi-hat: same metallic character but longer decay."""
-    dur = 0.15  # 150ms
-    n = int(dur * SAMPLE_RATE)
-
-    metal = [0.0] * n
-    for i in range(n):
-        t = i / SAMPLE_RATE
-        f1 = math.sin(2 * math.pi * 4250 * t)
-        f2 = math.sin(2 * math.pi * 5380 * t)
-        f3 = math.sin(2 * math.pi * 6800 * t)
-        metal[i] = f1 * f2 + f3 * 0.4
-    metal = apply_envelope(metal, 0.1, 120, SAMPLE_RATE)
-
-    noise = generate_noise(dur, SAMPLE_RATE, 0.8)
-    noise = high_pass(noise, 5000, SAMPLE_RATE)
-    noise = apply_envelope(noise, 0.1, 100, SAMPLE_RATE)
-
-    result = mix(metal, noise, 0.5)
-    return normalize(result)
+    """Open hi-hat: same metal, a much longer ring (open hats decay several times longer)."""
+    return make_hat(0.6, 450, 8)
 
 
 def make_clave():
@@ -269,7 +262,7 @@ def make_cowbell():
 
 def make_clap():
     """Handclap: multiple layered noise bursts for the classic clap sound."""
-    dur = 0.15  # 150ms
+    dur = 0.25  # 250ms
     n = int(dur * SAMPLE_RATE)
     import random
     random.seed(99)
@@ -290,9 +283,10 @@ def make_clap():
     # Reverb tail: longer filtered noise
     tail = generate_noise(dur, SAMPLE_RATE, 0.5)
     tail = bandpass(tail, 800, 5000, SAMPLE_RATE)
-    tail = apply_envelope(tail, 15, 120, SAMPLE_RATE)
+    tail = apply_envelope(tail, 15, 200, SAMPLE_RATE)
 
     result = [result[i] + tail[i] for i in range(n)]
+    result = bandpass(bandpass(result, 700, 4500, SAMPLE_RATE), 700, 4500, SAMPLE_RATE)
     return normalize(result)
 
 
@@ -315,27 +309,46 @@ def make_rimshot():
     return normalize(result)
 
 
-def make_low_tom():
-    """Low tom: pitched sine body with moderate decay."""
-    dur = 0.2  # 200ms
+def make_tom(start_hz, end_hz, dur, decay_ms):
+    """Tom: pitched body with a slight downward bend, an overtone, and a stick click."""
     n = int(dur * SAMPLE_RATE)
-
-    # Body: sine with slight pitch drop
-    envelope = [1.0] * n
-    envelope = apply_envelope(envelope, 0.5, 160, SAMPLE_RATE)
-    body = apply_pitch_envelope(envelope, 120, 80, 50, SAMPLE_RATE)
-
-    # Add harmonics for presence on small speakers
-    harm_env = apply_envelope([1.0] * n, 0.5, 100, SAMPLE_RATE)
-    harmonics = apply_pitch_envelope(harm_env, 240, 160, 40, SAMPLE_RATE)
-
-    # Stick attack
+    body = apply_pitch_envelope(apply_envelope([1.0] * n, 0.5, decay_ms, SAMPLE_RATE),
+                                start_hz, end_hz, 50, SAMPLE_RATE)
+    harmonics = apply_pitch_envelope(apply_envelope([1.0] * n, 0.5, decay_ms * 0.6, SAMPLE_RATE),
+                                     start_hz * 2, end_hz * 2, 40, SAMPLE_RATE)
     click = generate_noise(0.005, SAMPLE_RATE, 0.6)
     click = apply_envelope(click, 0.1, 4, SAMPLE_RATE)
     click += [0.0] * (n - len(click))
-
     result = [body[i] * 0.5 + harmonics[i] * 0.3 + click[i] * 0.2 for i in range(n)]
-    result = low_pass(result, 3000, SAMPLE_RATE)
+    result = low_pass(result, 4000, SAMPLE_RATE)
+    return normalize(result)
+
+
+def make_low_tom():
+    return make_tom(120, 82, 0.35, 280)
+
+
+def make_mid_tom():
+    return make_tom(165, 115, 0.3, 240)
+
+
+def make_high_tom():
+    return make_tom(225, 160, 0.25, 200)
+
+
+def make_crash():
+    """Crash cymbal: metal bank at a few pitches plus noise, bright, long decay."""
+    dur = 1.2
+    metal = [0.0] * int(dur * SAMPLE_RATE)
+    for scale in (1.0, 1.37, 1.83):
+        layer = metal_bank(dur, SAMPLE_RATE, scale)
+        metal = [a + b for a, b in zip(metal, layer)]
+    noise = generate_noise(dur, SAMPLE_RATE, 1.5, 11)
+    result = mix(metal, noise, 0.4)
+    for _ in range(2):
+        result = high_pass(result, 4000, SAMPLE_RATE)
+    result = low_pass(result, 12000, SAMPLE_RATE)
+    result = apply_envelope(result, 1.0, 1100, SAMPLE_RATE)
     return normalize(result)
 
 
@@ -352,11 +365,14 @@ def generate_header():
         'Clap': make_clap(),
         'Rimshot': make_rimshot(),
         'LowTom': make_low_tom(),
+        'MidTom': make_mid_tom(),
+        'HighTom': make_high_tom(),
+        'Crash': make_crash(),
     }
 
-    # Resample from SAMPLE_RATE to OUTPUT_RATE
     for name in drums:
-        drums[name] = resample(drums[name], SAMPLE_RATE, OUTPUT_RATE)
+        if SAMPLE_RATE != OUTPUT_RATE:
+            drums[name] = resample(drums[name], SAMPLE_RATE, OUTPUT_RATE)
         print(f"  {name}: {len(drums[name])} samples ({len(drums[name])*2} bytes)")
 
     total_bytes = sum(len(s) * 2 for s in drums.values())

@@ -66,7 +66,7 @@ Total wavetable data: 56 KB in flash, zero RAM.
 
 ### 3-Pair FM Synthesis
 
-For presets that need it (currently none active, but the engine supports it):
+Used by EPiano (body pair + a 14:1 "tine" pair), Bells and RingMod:
 
 ```
 [Mod1] → [Car1] ─┐
@@ -74,20 +74,20 @@ For presets that need it (currently none active, but the engine supports it):
 [Mod3] → [Car3] ─┘
 ```
 
-Each pair has independent ratio, depth, and output level. Pair 2 can be detuned for richness. Pair 3 typically uses a high ratio for metallic attack that decays with the spectral envelope.
+Each pair has an independent ratio, depth and output level. Ratios are fractional (`fmRatioX100`, so 140 = 1.4), which allows inharmonic spectra: Chowning's bell uses carrier:modulator 5:7. Depth is about 10x the modulation index. Pair 2 can be detuned for richness. Pair 3 typically uses a high ratio for a metallic attack that decays with the spectral envelope.
 
 ## Envelope
 
-Exponential ADSR with Q15 fixed-point rates:
+Exponential ADSR with Q30 levels and Q20 rates (so decays of 20+ seconds are possible without 64-bit math):
 
 - **Attack**: exponential approach to peak (fast initial ramp, smooth arrival)
-- **Decay**: exponential decay to sustain level
-- **Sustain**: held at sustain level
+- **Decay**: exponential decay to the sustain level. With `decay2Ms` set, it is two-stage like a real piano or guitar string: a quick drop to -12 dB, then a much slower tail.
+- **Sustain**: held at sustain level. A voice whose sustain is 0 ends by itself once it decays to silence.
 - **Release**: exponential decay to silence
 
 Rates are precomputed from milliseconds using `1 - exp(-4.6/samples)` for ~99% completion in the specified time.
 
-Snap threshold: 64 (~-54 dB) to avoid audible clicks at stage transitions.
+Snap threshold: ~-54 dB, to avoid audible clicks at stage transitions.
 
 ### Spectral Modulation Envelope
 
@@ -96,7 +96,7 @@ Independent from the amplitude ADSR. Controls:
 - Wavetable frame crossfading (timbre evolution on wavetable presets)
 - Filter envelope amount
 
-Also exponential, with per-preset `modDecayMs` controlling the rate.
+It starts at full, then decays over `modDecayMs` to `modSustain` (0 = darkest). Sustained instruments settle at a high `modSustain`, so they keep their harmonics instead of fading to a near-sine; struck and plucked ones settle lower. With `modDecayMs = 0` it stays at full brightness.
 
 ## Filter
 
@@ -113,35 +113,39 @@ Available master effects (one active at a time):
 
 | Effect | Implementation |
 |--------|---------------|
-| Vibrato | LFO pitch modulation |
-| Tremolo | LFO amplitude modulation |
-| Chorus | Stereo modulated delay taps, offset LFO phases |
-| Reverb | 4-tap stereo feedback delay network |
-| Delay | Mono feedback delay (1024 samples) |
+| Vibrato | 5 Hz pitch wobble, about +-20 cents (relative to each note) |
+| Tremolo | 5 Hz volume wobble, about +-2.5 dB |
+| Chorus | Two ~9 ms modulated delay taps, one per side, plus slight pitch wobble |
+| Reverb | Freeverb-style: 4 damped combs + 2 allpasses per side |
+| Delay | ~186 ms echo with 45% feedback |
 | Bitcrusher | 4-bit resolution, 4x downsample |
 
-Per-preset default effect is auto-enabled when switching presets.
+Choosing a preset selects its default effect and switches it on, unless the preset has `effectEnabled = false` (the basses and JazzOrg).
 
-Each effect is a class in `Effects.h` with two optional hooks: per-voice modulation (pitch offset or gain, computed once per frame) and processing of the master mix. To add an effect, write the class, add an `EffectType` entry and register it in `EffectRack`.
-
-On the organ presets the rotary speaker replaces the effect's stereo output while a voice is sounding.
+Each effect is a class in `Effects.h` with two optional hooks: per-voice modulation (relative pitch change or gain, computed once per frame) and in-place processing of the stereo master mix. To add an effect, write the class, add an `EffectType` entry and register it in `EffectRack`.
 
 ### Built-in Per-Preset Vibrato
 
-Solo instruments (violin, clarinet, flute) have vibrato that runs independently of the global effect toggle. Precomputed phase step per voice (no float in hot path).
+Solo and section instruments have their own vibrato, independent of the effect: rate in Hz (`vibratoRateX10`), depth in cents (`vibratoCents`), fading in over `vibratoDelayMs` the way players start vibrato after the attack. Real violin vibrato is about 5-7 Hz and 30-60 cents peak-to-peak; the presets use ±12-22 cents (24-44 peak-to-peak). The depth is a fraction of each note's pitch, so it sounds the same across the keyboard.
 
 ### Organ Simulation
 
-For JazzOrg and FullOrg presets:
-- **Key click**: broadband noise burst at note onset (~1ms linear decay)
-- **Hammond percussion**: sine tone at 4x fundamental frequency, fast decay
-- **Rotary speaker**: stereo amplitude + phase modulation (2.4 Hz jazz / 4.8 Hz full)
+Presets with `OrganTraits` (JazzOrg) get:
+- **Key click**: broadband noise burst at note onset (~1 ms)
+- **Hammond percussion**: a sine at the 2nd or 3rd harmonic (4' or 2 2/3'), exponential decay (~0.2 s fast, ~1 s slow on a real B-3). Single-trigger like the real thing: it only sounds when no other key is held.
+- **Rotary speaker (Leslie)**: a short modulated delay for the horn's Doppler pitch wobble plus amplitude modulation, the two sides 180 degrees apart. It runs after the effect, on the whole mix. Real Leslie horn speeds: ~0.8 Hz "chorale", ~6.7 Hz "tremolo"; JazzOrg uses tremolo.
+
+ChurchOrg is a pipe organ: no click, percussion or rotary, just slow pipe speech and reverb.
 
 ## Stereo
 
 - Per-voice stereo panning: voices alternate across the field
 - Stereo chorus and reverb preserve width
 - Dithering (1-bit triangular) applied at output
+
+## Latency
+
+The I2S output queue is `kI2SBufferCount` x `kI2SBufferFrames` = 6 x 64 stereo frames, about 8.7 ms from key press to sound (it was 8 x 256, about 46 ms). The main loop has to refill a 64-frame buffer every ~1.45 ms; if the audio ever crackles, raise the buffer count in `Config.h`.
 
 ## Performance Optimizations
 
@@ -155,16 +159,43 @@ For JazzOrg and FullOrg presets:
 
 ## Rhythm Engine
 
-16-step pattern sequencer with 4 synthesized drum voices:
+A drum machine playing PCM samples (generated by `tools/generate_drums.py`, stored in flash at 44.1 kHz) on six voices: kick, snare, hi-hat (closed and open share a voice so each chokes the other, like a real hat), percussion, toms and crash.
 
-- **Kick**: low oscillator with fast downward pitch envelope
-- **Snare**: tonal body + noise burst
-- **Hat**: high-passed short noise
-- **Perc**: click/blip synthesized hit
+### Patterns
 
-8 rhythm patterns selectable via front-panel buttons. Humanization jitter (0-31 samples) for natural feel.
+Patterns are written like a drum-machine grid in `RhythmEngine.cpp`: one string per drum, one character per 16th-note step.
 
-Patterns are stored as compact bitmasks (8 bytes per pattern). Mixed into the output after voice rendering.
+```
+  .kick  = "X.......X.x.....",     X accent   x normal   g ghost   . rest
+  .snare = "....X.......X...",     toms: H/M/L = high/mid/low (lowercase = softer)
+  .hat   = "X.x.X.x.X.x.X.x.",
+```
+
+- **Any length**: a pattern can be several bars (Latin's son clave spans two) and a bar can be 16 steps (4/4) or 12 (3/4, Waltz).
+- **Velocity**: accent, normal and ghost notes (~9 dB under normal), so funk ghost notes and soft cross-stick ballads work.
+- **Swing**: MPC-style, delaying the off-beat 16ths (50% straight, 66% triplet shuffle). Funk uses 56%.
+- **Fills**: optional one-bar fill lanes replace the normal ones on the last bar of every 4-bar phrase; a crash marks the next downbeat.
+- **Tempo**: each pattern has a usual tempo, recalled when it is selected (Tempo Up/Down still adjusts it).
+- **Humanization**: each hit starts 0-1.4 ms late at random, without moving the beat grid.
+
+| Pattern | Tempo | Groove |
+|---|---|---|
+| Pop | 100 | Kick on 1, the "and" of 2 and 3; backbeat; 8th hats. Snare fill. |
+| Rock | 112 | Kick on 1, 3 and the "and" of 3; accented quarter hats. Snare-and-tom fill, crash. |
+| Ballad | 72 | Cross-stick on 2 and 4, soft 8th hats. Tom fill. |
+| Disco | 120 | Four-on-the-floor kick, clap backbeat, closed 16ths with open hats on the "and"s. Clap roll fill. |
+| Funk | 96 | Syncopated kick, ghost notes around the backbeat, accented 16th hats, open hat on the last "and"; 56% swing. |
+| Latin | 105 | Son clave 3-2 over two bars, tumbao-style kick, shaker-like hats. No fill (the clave never breaks). |
+| Waltz | 90 | 3/4 "oom-pah-pah". |
+| March | 116 | Bass drum on every beat, snare drags into accented 2 and 4. Roll fill. |
+
+### Mix
+
+Each drum has a mix level (kick and snare lead, cymbals sit lower), and one drum-bus level (`kDrumBusGain`) sets the whole kit against the instruments. The drums are mixed **after** the preset's effect and the organ's rotary speaker, so they stay dry and sound the same on every preset (no echoing drums on Pluck, no swirling drums on JazzOrg). They then share the instruments' soft clipper rather than a hard clamp.
+
+At the default volume, playing 6-note chords along with Rock, Disco or March keeps the soft clipper's share under 0.1% of samples (a test enforces it); drum peaks reach about -2.5 dB, their average level sits 5-10 dB under a held note.
+
+Choosing another pattern while playing switches at the next bar line, like a drum machine. A swung or humanized hit is queued, so the previous hit on that drum keeps ringing until the new one actually starts.
 
 ## USB MIDI
 
@@ -173,19 +204,22 @@ Auto-detects USB host connection via `MidiUSB.connected()`:
 - **Computer connected**: MIDI-only mode (speaker muted, sends MIDI)
 - **Power only**: standalone synth mode (speaker active, no MIDI)
 
+A change must hold for `kModeSwitchDebounceMs` (500 ms) before the mode switches. When the synth becomes active it is re-sent the full performance state; the computer is sent nothing on connect.
+
 MIDI output includes:
 - Note on/off
 - Sustain pedal (CC64, values 127/0)
 - Volume (CC7)
-- Program change on instrument select
+- Program change on preset select, using the preset's General MIDI program (`gmProgram`); no bank select, since GM Level 1 has no banks
+- Octave, transpose, effect, rhythm and envelope tweaks as CC 20-25 and 70-75
 
 Device name: "Synth Pico MIDI"
 
 ## Resource Usage
 
-- Flash: 137 KB (6% of 2 MB)
-- RAM: 21 KB (7% of 264 KB)
-- CPU: 11% idle, ~19% peak (8 voices + organ rotary)
+- Flash: 476 KB (22% of 2 MB); the drum kit is ~330 KB of it
+- RAM: 54 KB (20% of 256 KB); the reverb and delay buffers are ~38 KB of it
+- CPU: last measured at 11% idle, ~19% with 8 voices + reverb, before the 2026 preset rework. Re-measure with the `cpu=` status line.
 
 ## Future Work
 

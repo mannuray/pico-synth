@@ -6,21 +6,22 @@
 #include "VoiceShape.h"
 
 // One sounding note: oscillators (plain, unison or 3-pair FM), organ
-// percussion and click, amplitude envelope and resonant filter.
+// percussion and click, vibrato, amplitude envelope and resonant filter.
 class Voice {
 public:
-  void start(uint8_t midiNote, const Preset &preset, int16_t stereoPan, dsp::NoiseSource &noise);
+  // keyNote is the note played; the preset's octave shifts the pitch, not the key.
+  // percussion: whether organ percussion triggers (Hammond-style single trigger).
+  void start(uint8_t keyNote, const Preset &preset, int16_t stereoPan, bool percussion, dsp::NoiseSource &noise);
   void release() { stage_ = Stage::Release; }
   void reset() { *this = Voice{}; }
 
-  // Advances one sample. Returns 0 and resets itself once the release ends.
+  // Advances one sample. Returns 0 and resets itself once the note has died away.
   int32_t render(const Preset &preset, const VoiceShape &shape, const VoiceModulation &modulation, dsp::NoiseSource &noise);
 
   bool active() const { return active_; }
   bool releasing() const { return stage_ == Stage::Release; }
-  uint8_t midiNote() const { return midiNote_; }
-  int32_t level() const { return level_; }  // envelope level, 0..32767
-  uint32_t phase() const { return phase_; }
+  uint8_t midiNote() const { return keyNote_; }
+  int32_t level() const { return level_; }  // envelope level, Q30
   int16_t stereoPan() const { return stereoPan_; }  // -256 (full left) to +256 (full right)
 
 private:
@@ -33,15 +34,17 @@ private:
   };
 
   bool active_ = false;
-  uint8_t midiNote_ = 0;
+  uint8_t keyNote_ = 0;
+  Stage stage_ = Stage::Off;
+  int16_t stereoPan_ = 0;
+
+  // Oscillators
   uint32_t phase_ = 0;
   uint32_t phaseStep_ = 0;
+  uint32_t unisonPhase_[2] = {0, 0};
   uint32_t modPhase_ = 0;
   uint32_t modPhaseStep_ = 0;
-  uint32_t percussionPhase_ = 0;
-  uint32_t percussionPhaseStep_ = 0;
-  uint32_t unisonPhase_[2] = {0, 0};
-  // FM pairs 2-3 phase accumulators
+  int16_t lastModOutput_ = 0;
   uint32_t fm2CarrierPhase_ = 0;
   uint32_t fm2CarrierPhaseStep_ = 0;
   uint32_t fm2ModPhase_ = 0;
@@ -49,17 +52,34 @@ private:
   uint32_t fm3CarrierPhase_ = 0;
   uint32_t fm3ModPhase_ = 0;
   uint32_t fm3ModPhaseStep_ = 0;
+
+  // Envelopes (Q30 levels, Q20 rates)
   int32_t level_ = 0;
   int32_t modLevel_ = 0;
-  int32_t modDecayStep_ = 0;
+  int32_t modSustain_ = 0;
+  uint32_t modDecayRate_ = 0;     // 0 = spectral envelope stays at full
+
+  // Organ
+  uint32_t percussionPhase_ = 0;
+  uint32_t percussionPhaseStep_ = 0;
   int32_t percussionLevel_ = 0;
-  int32_t percussionDecayStep_ = 0;
+  uint32_t percussionDecayRate_ = 0;
+  int32_t percussionPeak_ = 0;
   int32_t clickLevel_ = 0;
-  int16_t lastModOutput_ = 0;
-  int32_t filterLow_ = 0;
-  int32_t filterBand_ = 0;
-  uint32_t vibratoPhase_ = 0;    // per-voice vibrato LFO phase
-  uint32_t vibratoStep_ = 0;     // precomputed vibrato phase increment
-  int16_t stereoPan_ = 0;
-  Stage stage_ = Stage::Off;
+
+  // Vibrato
+  uint32_t vibratoPhase_ = 0;
+  uint32_t vibratoStep_ = 0;      // 0 = off
+  uint32_t vibratoDepthStep_ = 0; // peak phase-step deviation
+  int32_t vibratoFade_ = 0;       // Q15, ramps up over the vibrato delay
+  int32_t vibratoFadeStep_ = 0;
+
+  dsp::StateVariableLowPass filter_;
+
+  void advanceEnvelope(const VoiceShape &shape);
+  int32_t advanceSpectralEnvelope();
+  uint32_t currentPhaseStep(const VoiceModulation &modulation);
+  int32_t oscillate(const Preset &preset, uint32_t phaseStep, int32_t modLevel15);
+  int32_t organSounds(dsp::NoiseSource &noise);
+  int32_t filterCutoff(const Preset &preset, const VoiceShape &shape, int32_t modLevel15) const;
 };

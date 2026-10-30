@@ -2,19 +2,26 @@
 
 #include "SynthTypes.h"
 
-// Leslie-style rotary speaker for the organ presets: a rotor spinning at the
-// preset's speed swings volume left/right and adds a Doppler-like phase wobble.
+// Leslie-style rotary speaker for the organ presets. The rotating horn is
+// modelled as a short modulated delay (Doppler pitch wobble) plus amplitude
+// modulation, with the two output sides 180 degrees apart like two mics on
+// opposite sides of the cabinet.
 class RotarySpeaker {
 public:
-  // Call once per sample while an organ preset is active.
-  void advance(const OrganTraits &organ) { phase_ += organ.rotaryStep; }
+  // nullptr, or traits with no rotary speed, disables it.
+  void configure(const OrganTraits *organ);
+  bool enabled() const { return step_ != 0; }
 
-  // Turns the mono mix into stereo, blending in the preset's waveform
-  // re-sampled around `sourcePhase` (a sounding voice's phase) at the
-  // rotor's phase offsets.
-  void render(const OrganTraits &organ, const Preset &preset, uint32_t sourcePhase,
-              int32_t mix, int16_t &outL, int16_t &outR) const;
+  // Processes one stereo sample in place.
+  void process(int32_t &left, int32_t &right);
 
 private:
+  static constexpr size_t kBufferSamples = 64;
+  int16_t buffer_[kBufferSamples] = {};
+  size_t index_ = 0;
   uint32_t phase_ = 0;
+  uint32_t step_ = 0;
+  int32_t depth_ = 0;  // 0..255
+
+  int32_t readDelayed(int32_t delayQ8) const;
 };

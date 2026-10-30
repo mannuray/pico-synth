@@ -1,19 +1,40 @@
 #include "RotarySpeaker.h"
 #include "Oscillator.h"
 
-void RotarySpeaker::render(const OrganTraits &organ, const Preset &preset, uint32_t sourcePhase,
-                           int32_t mix, int16_t &outL, int16_t &outR) const {
-  const int16_t rotaryL = osc::sine(phase_);
-  const int16_t rotaryR = osc::sine(phase_ + 0x40000000u);
-  const int32_t ampL = 224 + (rotaryL >> 10);
-  const int32_t ampR = 224 + (rotaryR >> 10);
-  const int32_t phaseOffset = rotaryL >> organ.rotaryDepthShift;
-  const int32_t stereoOffset = rotaryR >> organ.rotaryDepthShift;
-  const int32_t rotaryWet = organ.rotaryWet;
-  const int32_t leftSample = osc::sample(preset.waveform, sourcePhase + static_cast<uint32_t>(phaseOffset), preset.wavetableIndex);
-  const int32_t rightSample = osc::sample(preset.waveform, sourcePhase + static_cast<uint32_t>(stereoOffset), preset.wavetableIndex);
-  const int32_t leftMix = (mix * ampL) >> 8;
-  const int32_t rightMix = (mix * ampR) >> 8;
-  outL = dsp::softClip((leftMix * (256 - rotaryWet) + leftSample * rotaryWet) >> 8);
-  outR = dsp::softClip((rightMix * (256 - rotaryWet) + rightSample * rotaryWet) >> 8);
+namespace {
+constexpr int32_t kBaseDelayQ8 = 24 << 8;  // ~0.5 ms, leaves room for the Doppler swing
+}
+
+void RotarySpeaker::configure(const OrganTraits *organ) {
+  const bool on = organ != nullptr && organ->rotaryHzX10 > 0;
+  step_ = on ? osc::hzToPhaseStep(organ->rotaryHzX10 / 10.0f) : 0;
+  depth_ = on ? organ->rotaryDepth : 0;
+}
+
+int32_t RotarySpeaker::readDelayed(int32_t delayQ8) const {
+  const size_t whole = static_cast<size_t>(delayQ8 >> 8);
+  const int32_t frac = delayQ8 & 0xFF;
+  const int32_t a = buffer_[(index_ + kBufferSamples - whole) & (kBufferSamples - 1)];
+  const int32_t b = buffer_[(index_ + kBufferSamples - whole - 1) & (kBufferSamples - 1)];
+  return a + (((b - a) * frac) >> 8);
+}
+
+void RotarySpeaker::process(int32_t &left, int32_t &right) {
+  buffer_[index_] = static_cast<int16_t>(constrain((left + right) >> 1, -32768, 32767));
+
+  phase_ += step_;
+  const int32_t toward = osc::sine(phase_);                 // horn velocity toward the listener
+  const int32_t facing = osc::sine(phase_ + 0x40000000u);   // horn pointing at the listener
+
+  // Doppler: up to ~+-8 samples of delay swing at full depth.
+  const int32_t swingQ8 = (toward * depth_) >> 12;
+  const int32_t tapLeft = readDelayed(kBaseDelayQ8 + swingQ8);
+  const int32_t tapRight = readDelayed(kBaseDelayQ8 - swingQ8);
+
+  // Amplitude: up to +-50% at full depth.
+  const int32_t am = (facing * depth_) >> 16;
+  left = (tapLeft * (256 + am)) >> 8;
+  right = (tapRight * (256 - am)) >> 8;
+
+  index_ = (index_ + 1) & (kBufferSamples - 1);
 }

@@ -1,5 +1,6 @@
 #include "PerformanceController.h"
 #include "Presets.h"
+#include "RhythmPatterns.h"
 
 namespace {
 constexpr int kTempoStepBpm = 5;
@@ -10,6 +11,7 @@ PerformanceController::PerformanceController(IEventSink &output, Print &log)
 
 void PerformanceController::begin() {
   loadPresetDefaults();
+  performance_.setTempoBpm(rhythmPatternAt(performance_.rhythmPattern()).defaultBpm);
 }
 
 bool PerformanceController::handleKey(uint8_t keyIndex, bool pressed) {
@@ -67,6 +69,11 @@ void PerformanceController::syncOutputs() {
 bool PerformanceController::pressKey(uint8_t keyIndex) {
   if (keys_.isHeld(keyIndex)) {
     return false;
+  }
+  if (keys_.isSounding(keyIndex)) {
+    // Still ringing under sustain: end that note first, or it would hang
+    // (its pitch may differ now if octave/transpose changed).
+    sendNote(KeyboardEventType::NoteOff, keys_.soundingNote(keyIndex));
   }
   const uint8_t midiNote = pitch_.midiNoteForKey(keyIndex);
   keys_.press(keyIndex, midiNote);
@@ -162,9 +169,12 @@ void PerformanceController::toggleRhythm() {
   send(CommandType::RhythmPlaying, performance_.rhythmPlaying() ? 1 : 0);
 }
 
+// Like an arranger keyboard, choosing a rhythm also recalls its usual tempo.
 void PerformanceController::selectRhythm(uint8_t pattern) {
   performance_.setRhythmPattern(pattern);
   send(CommandType::RhythmPattern, performance_.rhythmPattern());
+  performance_.setTempoBpm(rhythmPatternAt(performance_.rhythmPattern()).defaultBpm);
+  send(CommandType::Tempo, performance_.tempoBpm());
 }
 
 // Cycles -2, -1, 0, 1, 2, -2, ...
@@ -187,7 +197,7 @@ void PerformanceController::loadPresetDefaults() {
   const Preset &preset = presets::at(performance_.activePresetIndex());
   performance_.resetEnvelopeOffsets();
   performance_.setEffect(preset.defaultEffect);
-  performance_.setEffectEnabled(true);
+  performance_.setEffectEnabled(preset.effectEnabled);
 }
 
 // Sends the preset plus only the defaults that changed, so MIDI hosts aren't

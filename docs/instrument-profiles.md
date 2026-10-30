@@ -1,161 +1,111 @@
 # Instrument Profiles
 
-This document describes the sound design intent for each preset across all 3 banks.
+Sound-design intent for the 24 presets. The parameters live in `arduino/synth_v1/Presets.cpp`.
 
 ## Design Principles
 
-- each preset must occupy a clearly different musical slot
-- different synthesis methods (wavetable, FM, saw, square, sine, triangle) create the most distinct sounds
-- multi-frame wavetable scanning gives time-varying timbre that makes instruments sound alive
-- the resonant filter shapes character — high resonance for nasal/funky sounds, low for warm/natural
-- built-in vibrato on solo instruments (violin, clarinet, flute) without needing the global effect
+- **Realistic over gimmicky.** Each acoustic preset aims at measured behaviour of the real instrument (vibrato rate and depth, decay shape, organ speeds), not just a recognisable label.
+- **Keep the harmonics.** The spectral envelope starts bright and settles at `modSustain`. Sustained instruments settle high, so a held violin or trumpet stays a violin or trumpet; struck and plucked sounds settle lower, as they darken in real life.
+- **Vibrato like a player.** Depth is in cents (`vibratoCents` is the ± swing; peak-to-peak is twice that) and fades in after the attack (`vibratoDelayMs`).
+- **Level-matched.** Each preset's `gain` puts its loudest held moment at the same level (within 0.2 dB). Struck and plucked presets (piano, guitar, pluck) sit 2.5-6 dB lower on that measure so their sharp attacks stay below the soft clipper, even in chords; their peaks are as loud as the rest.
+- **Distinct slots.** No two presets share both a sound source and a role.
 
-## Bank 1: Acoustic / Traditional
+## How the presets were checked
 
-### GrandPno (WT0: GrandPno)
-- warm acoustic piano with inharmonicity and hammer noise in the wavetable
-- fast attack, 900ms decay to silence, no sustain
-- 600ms spectral decay: bright strike mellows into warm body
-- default effect: reverb
+A host render (see `tests/host`) plays each preset at C3, C4 and C5 and measures loudness, harmonic content, decay times and vibrato depth/rate. Typical results after tuning:
 
-### NylonGtr (WT2: NylonGtr)
-- plucked nylon guitar with finger noise in the wavetable
-- very fast attack, 480ms decay, no sustain — dies out like a real pluck
-- 250ms spectral decay: bright pluck goes dark quickly
-- high resonance (130) for woody body peak
-- default effect: reverb
+| Measure | Before the rework | After |
+|---|---|---|
+| Loudness spread across presets | 16 dB | 0.2 dB (sustained); plucked/struck deliberately lower, see above |
+| Energy in the fundamental, held violin / trumpet | 85% / 96% (nearly a sine) | 45% / 36% |
+| Violin vibrato | under 1 cent (inaudible) | ±22 cents (44 peak-to-peak) at 6 Hz |
+| Piano, time to fall 20 dB | 0.57 s | ~2 s |
+| Pitch vs. MIDI note | one octave high | matches (A4 = 440 Hz) |
 
-### Violin (WT1: Violin)
-- solo bowed string with 2nd harmonic strongest (real violin trait)
-- body formants at 300/1200/2700 Hz baked into wavetable
-- 18ms attack, sustained, built-in vibrato (rate 120, depth 24)
-- 600ms spectral decay for bow attack evolution
-- default effect: reverb
+## Reference values
 
-### PanFlute (WT3: Flute)
-- breathy flute with strong breath noise in the wavetable
-- slow 45ms attack (breath onset), sustained
-- built-in vibrato (rate 60, depth 14)
-- low resonance (26) for pure airy character
-- default effect: reverb
+| Instrument behaviour | Real-world value | Used here |
+|---|---|---|
+| Violin vibrato | 5-7 Hz, 30-60 cents peak-to-peak (pedagogy suggests ~50) | 6 Hz, ±22 cents, 250 ms fade-in |
+| Leslie horn speed | ~0.8 Hz chorale, ~6.7 Hz tremolo | JazzOrg 6.7 Hz |
+| Hammond percussion | 2nd or 3rd harmonic; ~0.2 s fast, ~1 s slow | 3rd harmonic, 250 ms |
+| Chowning FM bell | carrier:modulator 5:7, index up to 10, exponential decays | ratio 1.4, index ~8 |
+| Piano decay | two-stage: fast "prompt sound", slow "aftersound" | 0.5 s to -12 dB, then ~7 s |
 
-### JazzOrg (WT7: Organ)
-- Hammond-style jazz organ with 6-harmonic drawbar model
-- instant attack, full sustain, fast release
-- key click noise burst at note onset
-- Hammond percussion (sine at 4x fundamental)
-- rotary speaker simulation (2.4 Hz)
-- static timbre (no spectral decay — organs don't change brightness)
+## Bank 1: Keys & Folk
 
-### FullOrg (WT12: PipeOrgan)
-- full pipe organ with 8-harmonic registration
-- wider unison detune (24) for ensemble width
-- brighter than JazzOrg (brightness 248)
-- rotary speaker simulation (4.8 Hz, more wet)
+### GrandPno (wavetable 0)
+Fast drop to -12 dB in about 0.5 s, then a ~7 s tail. The tone darkens over 2.5 s but keeps some harmonics. Reverb.
 
-### Accordion (WT11: AccordionReed)
-- reed accordion with all-harmonic sawtooth-like wavetable + reed noise
-- musette detuning via unison (detune 14)
-- high resonance (110) for nasal reed character
-- 500ms spectral decay for subtle brightness evolution
+### EPiano (FM)
+Rhodes-style: a 1:1 FM body plus a 14:1 "tine" pair whose bite fades with the spectral envelope. Two-stage decay. Chorus.
 
-### Clarinet (WT10: Reed)
-- odd-harmonic reed spectrum (1, 3, 5, 7, 9)
-- 22ms attack (reed onset), sustained
-- built-in vibrato (rate 80, depth 18)
-- 500ms spectral decay
+### JazzOrg (wavetable 7)
+Hammond B-3 style: instant attack, full sustain, key click, single-trigger percussion on the 3rd harmonic, fast Leslie. No extra effect by default; the Leslie is the effect.
 
-## Bank 2: Synth / Electronic
+### ChurchOrg (wavetable 12)
+Pipe organ: 60 ms pipe speech, slight detune between ranks via unison, long release into reverb. No click, percussion or Leslie.
 
-### SpacePad (WT8: Choir)
-- huge evolving sci-fi pad
-- very slow attack (300ms), wide unison (detune 30)
-- 1200ms spectral decay for long timbre evolution
-- default effect: chorus
+### Accordion (wavetable 11)
+Reed wavetable with musette detuning (unison spread 9, about 15 cents). Steady bellows tone, no spectral decay.
 
-### FunkBass (Saw)
-- squelchy resonant bass with PolyBLEP anti-aliased sawtooth
-- resonance 240 — the filter sweep IS the sound
-- 120ms spectral decay: each note quacks then settles
-- default effect: delay
+### Harmonica (wavetable 5)
+Blues harp: breathy onset, settles slightly darker, ±20-cent hand vibrato after 300 ms.
 
-### SynthLead (WT13: SoftLead)
-- fat analog-style lead with pulse-saw hybrid wavetable
-- unison (detune 16) + built-in vibrato (rate 80, depth 16)
-- default effect: chorus
+### NylonGtr (wavetable 2)
+Pluck with a two-stage decay (0.25 s drop, ~3.5 s tail) that darkens as it rings.
 
-### BellTone (FM ratio 5)
-- clean glass bell with gentle FM synthesis
-- 1400ms decay, very low sustain — long ring
-- low FM depth (36) so it's gentle, not harsh
-- default effect: reverb
+### Bells (FM)
+Chowning's bell: modulator at 1.4x the carrier, index ~8 at the strike, decaying with the tone. Long ring and release.
 
-### BitOrgan (Square)
-- lo-fi chiptune organ, raw square wave
-- instant attack, full sustain — retro 8-bit feel
-- very low brightness (60), minimal resonance
-- default effect: delay
+## Bank 2: Orchestral
 
-### WahClav (Saw)
-- funky auto-wah clavinet
-- resonance 220 with 150ms spectral decay = rapid filter sweep per note
-- default effect: delay
+### Violin (wavetable 1)
+80 ms bowed attack; stays bright while held; 6 Hz, ±22-cent vibrato fading in after 250 ms.
 
-### Harmonica (WT5: Harmonica)
-- blues harp with odd-heavy harmonics and reed/breath noise
-- built-in vibrato (rate 100, depth 22)
-- default effect: reverb
+### Cello (wavetable 6)
+An octave below the key (cello range starts at C2). Slower 100 ms bow attack, 5.5 Hz, ±20-cent vibrato.
 
-### Cello (WT6: Cello)
-- deep bowed string with body formants
-- slow attack (30ms), built-in vibrato (rate 90, depth 28)
-- 700ms spectral decay
-- default effect: reverb
+### Strings (wavetable 9)
+Ensemble: soft-string wavetable with unison detune, 250 ms attack, long release, light section vibrato.
 
-## Bank 3: Experimental / Wild
+### Flute (wavetable 3)
+Near-sinusoidal like a real flute, breathy attack, gentle ±15-cent vibrato.
 
-### SubBass (Triangle)
-- deep sub bass, felt more than heard
-- very low brightness (30), zero resonance
-- no spectral modulation — pure fundamental
+### Clarinet (wavetable 10)
+Odd-harmonic reed, stays reedy while held. No vibrato, as in classical clarinet playing.
 
-### Siren (Sine)
-- wobbling pitch siren with extreme vibrato (rate 255, depth 120)
-- full sustain, pure sine — the vibrato IS the instrument
-- default effect: delay
+### Trumpet (wavetable 4)
+Bright 30 ms attack that stays brassy while held; ±15-cent vibrato late in the note.
 
-### Trumpet (WT4: Trumpet)
-- warm brass with strong mid harmonics and mute resonance formants
-- built-in vibrato (rate 70, depth 12)
-- 300ms spectral decay for attack brightness
-- default effect: reverb
+### Brass (wavetable 4)
+Section version: unison, slower 70 ms swell, a little darker than the solo trumpet.
 
-### Choir (WT8: Choir)
-- vocal pad with formant wavetable
-- slow attack (200ms), unison (detune 14)
-- built-in vibrato (rate 50, depth 12)
-- default effect: reverb
+### Choir (wavetable 8)
+Vocal pad: unison, 250 ms attack, light vibrato.
 
-### Pluck (Saw)
-- sharp percussive synth pluck
-- 100ms decay, no sustain — dies almost instantly
-- high resonance (200) for a bright snap
-- default effect: delay
+## Bank 3: Synth
 
-### Vox (WT8: Choir)
-- haunting vocal synth
-- high resonance (160) creates vowel-like formant shapes
-- unison (detune 12) + built-in vibrato
-- 800ms spectral decay for slow timbre evolution
-- default effect: reverb
+### SynthLead (saw)
+Detuned three-saw unison, resonant filter that settles after the attack, delayed vibrato, delay effect.
 
-### Brass (WT4: Trumpet)
-- punchy synth brass stab
-- bright attack (200) that closes in 200ms — snap then settle
-- default effect: reverb
+### SpacePad (wavetable 13)
+Very slow attack (0.9 s), wide unison, a 3 s downward filter sweep, chorus.
 
-### RingMod (FM ratio 8)
-- metallic industrial sound
-- FM ratio 8 with feedback 20 — intentionally inharmonic
-- no spectral decay — stays harsh
-- default effect: delay
+### FunkBass (saw, octave down)
+High resonance with a fast spectral envelope: each note "quacks", then settles. Dry.
+
+### SubBass (sine, octave down)
+Pure low fundamental. Dry.
+
+### Pluck (saw)
+Short resonant pluck with a quick two-stage decay, into the delay.
+
+### WahClav (saw)
+Funky clav with a fast resonant filter sweep on every note. Dry.
+
+### Chiptune (square)
+Open square wave with the delayed vibrato typical of 8-bit game music, through the bitcrusher.
+
+### RingMod (FM)
+Non-integer ratio (3.53) for an inharmonic, metallic tone; moderate index so it's harsh but not noise. Delay.

@@ -92,7 +92,7 @@ See [docs/matrix-map.md](docs/matrix-map.md) for the full key matrix layout.
 | Octave Up/Down | Shift keyboard +/- 2 octaves |
 | Transpose Up/Down | Shift +/- 12 semitones |
 | Volume Up/Down | Master volume |
-| Tempo Up/Down | Rhythm/metronome BPM |
+| Tempo Up/Down | Rhythm BPM |
 | Sustain | Hold pedal (sends MIDI CC64) |
 | Effect Select | Cycle through effects |
 | Effect On/Off | Toggle current effect |
@@ -152,16 +152,25 @@ python3 tools/extract_wavetable.py recording.wav --name Piano --table-size 512 -
 
 ```
 synth_v1.ino          Entry point, wires up components
-AppController         Main loop, matrix scanning, mode management
-SynthEngine           Polyphonic synth: oscillators, envelopes, filters, effects
-RhythmEngine          Drum pattern sequencer with synthesized voices
-MatrixScanner         Keyboard matrix scanning with debounce
-KeyboardState         Note tracking, octave/transpose management
-PerformanceState      Bank, instrument, effect, volume state
-I2SAudioOutput        I2S stereo output via PIO
+AppController         Main loop: scheduling, USB mode detection
+PerformanceController Key/button presses -> state changes -> output commands
+PerformanceState      Bank, preset, effect, sustain, tempo, volume state
+PitchSettings         Octave/transpose, key -> MIDI note
+KeyTracker            Held and sustained keys
+OutputRouter          Sends events/commands to the sinks for the current mode
+SynthEventSink        Applies events/commands to the synth engine
 MidiEventSink         USB MIDI output (notes, CC, program change)
-SynthEventSink        Routes events to the synth engine
 SerialDebugSink       Serial monitor debug output
+SynthEngine           Voice allocation, mixing, effect/rotary routing, output
+Voice                 One note: oscillators, envelope, filter
+Oscillator            Waveforms and wavetables
+RotarySpeaker         Leslie-style rotary for the organ presets
+Effects               Master effects, one class each, plus the effect rack
+Presets               Preset table
+RhythmEngine          Drum pattern sequencer with sampled voices
+MatrixScanner         Keyboard matrix scanning with debounce
+I2SAudioOutput        I2S stereo output via PIO
+ArduinoPlatform       Clock, USB host detection, status LED
 WaveTableData.h       Pre-generated wavetable data (14 instruments x 4 frames)
 ```
 

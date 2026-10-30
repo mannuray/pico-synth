@@ -9,7 +9,7 @@ namespace {
 // Step:  0123456789ABCDEF
 // Beat:  1 . . . 2 . . . 3 . . . 4 . . .
 //
-const RhythmPattern kPatterns[8] = {
+const RhythmPattern kPatterns[kRhythmPatternCount] = {
   // Name          Kick        Snare       Hat         Perc        Accent     Perc#              Open
   // Pop: simple 4/4. Kick on 1&3, clap on 2&4, 8th note hats.
   {"Pop",        0x8080,     0x0808,     0xAAAA,     0x0000,     0x8808,     kDrumId_Clap,      false},
@@ -37,17 +37,14 @@ const RhythmPattern kPatterns[8] = {
 };
 }
 
-void RhythmEngine::begin(uint32_t sampleRate, const int16_t* sineTable) {
+void RhythmEngine::begin(uint32_t sampleRate) {
   sampleRate_ = sampleRate;
-  sineTable_ = sineTable;
   samplesUntilNextStep_ = stepSamples();
 }
 
 void RhythmEngine::setBpm(uint8_t bpm) {
   bpm_ = constrain(bpm, config::kMetronomeMinBpm, config::kMetronomeMaxBpm);
 }
-
-uint8_t RhythmEngine::bpm() const { return bpm_; }
 
 void RhythmEngine::setPlaying(bool playing) {
   playing_ = playing;
@@ -57,20 +54,16 @@ void RhythmEngine::setPlaying(bool playing) {
   }
 }
 
-bool RhythmEngine::isPlaying() const { return playing_; }
-
 void RhythmEngine::setPattern(uint8_t patternIndex) {
-  currentPattern_ = patternIndex % kPatternCount;
+  currentPattern_ = patternIndex % kRhythmPatternCount;
 }
-
-uint8_t RhythmEngine::currentPattern() const { return currentPattern_; }
 
 const RhythmPattern &RhythmEngine::currentPatternDef() const {
-  return patternAt(currentPattern_);
+  return rhythmPatternAt(currentPattern_);
 }
 
-const RhythmPattern &RhythmEngine::patternAt(uint8_t patternIndex) {
-  return kPatterns[patternIndex % kPatternCount];
+const RhythmPattern &rhythmPatternAt(uint8_t patternIndex) {
+  return kPatterns[patternIndex % kRhythmPatternCount];
 }
 
 uint32_t RhythmEngine::stepSamples() const {

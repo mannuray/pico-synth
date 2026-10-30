@@ -1,9 +1,29 @@
 #include "MidiEventSink.h"
+#include "Config.h"
 
 #include <MIDIUSB.h>
 
 namespace {
 constexpr uint8_t kMidiChannel = 0;
+
+// Control change numbers. 20-25 are undefined in the MIDI spec and used for
+// this instrument's own controls.
+constexpr uint8_t kCcBankSelect = 0;
+constexpr uint8_t kCcVolume = 7;
+constexpr uint8_t kCcTempo = 20;
+constexpr uint8_t kCcOctave = 21;
+constexpr uint8_t kCcTranspose = 22;
+constexpr uint8_t kCcEffect = 23;
+constexpr uint8_t kCcEffectEnabled = 24;
+constexpr uint8_t kCcRhythmPattern = 25;
+constexpr uint8_t kCcSustain = 64;
+constexpr uint8_t kCcSustainLevel = 70;
+constexpr uint8_t kCcReleaseTime = 72;
+constexpr uint8_t kCcAttackTime = 73;
+constexpr uint8_t kCcDecayTime = 75;
+constexpr uint8_t kCcRhythmPlaying = 111;
+constexpr uint8_t kCcAllSoundOff = 120;
+constexpr uint8_t kCcAllNotesOff = 123;
 
 constexpr uint8_t cinForStatus(uint8_t status) {
   switch (status & 0xF0) {
@@ -39,8 +59,9 @@ void sendNoteOff(uint8_t note, uint8_t velocity = 0) {
   sendPacket(static_cast<uint8_t>(0x80 | kMidiChannel), note, velocity);
 }
 
-void sendControlChange(uint8_t control, uint8_t value) {
-  sendPacket(static_cast<uint8_t>(0xB0 | kMidiChannel), control, value);
+// Clamps to the 7-bit range MIDI data bytes allow.
+void sendControlChange(uint8_t control, int value) {
+  sendPacket(static_cast<uint8_t>(0xB0 | kMidiChannel), control, static_cast<uint8_t>(constrain(value, 0, 127)));
 }
 
 void sendProgramChange(uint8_t program) {
@@ -48,44 +69,9 @@ void sendProgramChange(uint8_t program) {
   MidiUSB.sendMIDI(packet);
 }
 
-uint8_t controlToCc(ControlType control) {
-  switch (control) {
-    case ControlType::BankDown:
-    case ControlType::BankUp:
-      return 0x00;
-    case ControlType::SustainToggle:
-      return 64;
-    case ControlType::VolumeDown:
-    case ControlType::VolumeUp:
-      return 7;
-    case ControlType::RhythmStartStop:
-      return 111;
-    case ControlType::TempoDown:
-    case ControlType::TempoUp:
-      return 20;
-    case ControlType::OctaveDown:
-    case ControlType::OctaveUp:
-      return 21;
-    case ControlType::TransposeDown:
-    case ControlType::TransposeUp:
-      return 22;
-    case ControlType::EffectSelect:
-      return 23;
-    case ControlType::EffectToggle:
-      return 24;
-    case ControlType::RhythmSelect:
-      return 25;
-    case ControlType::AttackUp:
-      return 73;
-    case ControlType::DecayUp:
-      return 75;
-    case ControlType::SustainUp:
-      return 70;
-    case ControlType::ReleaseUp:
-      return 72;
-    default:
-      return 0x7F;
-  }
+// Envelope offsets go out as 0..4 (offset + 2).
+int envelopeValue(int16_t offset) {
+  return offset - config::kMinEnvelopeOffset;
 }
 }  // namespace
 
@@ -97,25 +83,62 @@ void MidiEventSink::handleEvent(const KeyboardEvent &event) {
     case KeyboardEventType::NoteOff:
       sendNoteOff(event.note);
       break;
-    case KeyboardEventType::Control:
-      sendControlChange(controlToCc(event.control), event.value);
-      break;
   }
 
   MidiUSB.flush();
 }
 
 void MidiEventSink::handleCommand(const PerformanceCommand &command) {
-  switch (command.control) {
-    case ControlType::InstrumentSelect:
-      sendProgramChange(command.value);
+  switch (command.type) {
+    case CommandType::SelectBank:
+      sendControlChange(kCcBankSelect, command.value);
       break;
-    case ControlType::Panic:
-      sendControlChange(120, 0);
-      sendControlChange(123, 0);
+    case CommandType::SelectPreset:
+      sendProgramChange(static_cast<uint8_t>(command.value));
       break;
-    default:
-      sendControlChange(controlToCc(command.control), command.value);
+    case CommandType::Sustain:
+      // Standard MIDI treats >= 64 as on.
+      sendControlChange(kCcSustain, command.value != 0 ? 127 : 0);
+      break;
+    case CommandType::Volume:
+      sendControlChange(kCcVolume, map(command.value, config::kMinMasterVolume, config::kMaxMasterVolume, 0, 127));
+      break;
+    case CommandType::Tempo:
+      sendControlChange(kCcTempo, map(command.value, config::kMetronomeMinBpm, config::kMetronomeMaxBpm, 0, 127));
+      break;
+    case CommandType::Effect:
+      sendControlChange(kCcEffect, command.value);
+      break;
+    case CommandType::EffectEnabled:
+      sendControlChange(kCcEffectEnabled, command.value);
+      break;
+    case CommandType::RhythmPlaying:
+      sendControlChange(kCcRhythmPlaying, command.value);
+      break;
+    case CommandType::RhythmPattern:
+      sendControlChange(kCcRhythmPattern, command.value);
+      break;
+    case CommandType::OctaveShift:
+      sendControlChange(kCcOctave, command.value - config::kMinOctaveShift);
+      break;
+    case CommandType::Transpose:
+      sendControlChange(kCcTranspose, command.value - config::kMinTranspose);
+      break;
+    case CommandType::AttackOffset:
+      sendControlChange(kCcAttackTime, envelopeValue(command.value));
+      break;
+    case CommandType::DecayOffset:
+      sendControlChange(kCcDecayTime, envelopeValue(command.value));
+      break;
+    case CommandType::SustainOffset:
+      sendControlChange(kCcSustainLevel, envelopeValue(command.value));
+      break;
+    case CommandType::ReleaseOffset:
+      sendControlChange(kCcReleaseTime, envelopeValue(command.value));
+      break;
+    case CommandType::AllNotesOff:
+      sendControlChange(kCcAllSoundOff, 0);
+      sendControlChange(kCcAllNotesOff, 0);
       break;
   }
 

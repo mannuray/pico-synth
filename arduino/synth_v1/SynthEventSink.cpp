@@ -8,47 +8,53 @@ void SynthEventSink::handleEvent(const KeyboardEvent &event) {
     case KeyboardEventType::NoteOff:
       synth_.noteOff(event.note);
       break;
-    case KeyboardEventType::Control:
-      break;
   }
 }
 
 void SynthEventSink::handleCommand(const PerformanceCommand &command) {
-  switch (command.control) {
-    case ControlType::SustainToggle:
+  switch (command.type) {
+    case CommandType::SelectPreset:
+      synth_.setPreset(static_cast<uint8_t>(command.value));
+      break;
+    case CommandType::Sustain:
       synth_.setSustainEnabled(command.value != 0);
       break;
-    case ControlType::VolumeDown:
-    case ControlType::VolumeUp:
-      synth_.setMasterVolume(map(command.value, 0, 127, 0, 32767));
+    case CommandType::Volume:
+      synth_.setMasterVolume(command.value);
       break;
-    case ControlType::TempoDown:
-    case ControlType::TempoUp:
-      synth_.setMetronomeBpm(command.value);
+    case CommandType::Tempo:
+      synth_.setTempoBpm(static_cast<uint8_t>(command.value));
       break;
-    case ControlType::EffectSelect:
-      synth_.setEffect(static_cast<EffectType>(command.value % static_cast<uint8_t>(EffectType::Count)));
+    case CommandType::Effect:
+      synth_.setEffect(static_cast<EffectType>(command.value));
       break;
-    case ControlType::EffectToggle:
+    case CommandType::EffectEnabled:
       synth_.setEffectEnabled(command.value != 0);
       break;
-    case ControlType::RhythmStartStop:
+    case CommandType::RhythmPlaying:
       synth_.setRhythmPlaying(command.value != 0);
       break;
-    case ControlType::RhythmSelect:
-      synth_.setRhythmPattern(command.value);
+    case CommandType::RhythmPattern:
+      synth_.setRhythmPattern(static_cast<uint8_t>(command.value));
       break;
-    case ControlType::Panic:
+    case CommandType::AttackOffset:
+      synth_.setAttackOffset(static_cast<int8_t>(command.value));
+      break;
+    case CommandType::DecayOffset:
+      synth_.setDecayOffset(static_cast<int8_t>(command.value));
+      break;
+    case CommandType::SustainOffset:
+      synth_.setSustainOffset(static_cast<int8_t>(command.value));
+      break;
+    case CommandType::ReleaseOffset:
+      synth_.setReleaseOffset(static_cast<int8_t>(command.value));
+      break;
+    case CommandType::AllNotesOff:
       synth_.allNotesOff();
       break;
-    case ControlType::InstrumentSelect:
-    case ControlType::BankDown:
-    case ControlType::BankUp:
-    case ControlType::OctaveDown:
-    case ControlType::OctaveUp:
-    case ControlType::TransposeDown:
-    case ControlType::TransposeUp:
-    case ControlType::None:
+    case CommandType::SelectBank:     // the preset index already includes the bank
+    case CommandType::OctaveShift:    // applied to note numbers before they arrive
+    case CommandType::Transpose:      // applied to note numbers before they arrive
       break;
   }
 }

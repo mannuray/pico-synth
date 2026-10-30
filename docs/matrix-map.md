@@ -219,7 +219,7 @@ R6 C1 = Sustain
 R0 C5 = Panic
 R0 C6 = Effect Select
 R0 C7 = Effect On/Off
-R0 C0 = Metronome On/Off
+R0 C0 = Rhythm Start/Stop
 R0 C1 = Transpose Down
 R0 C2 = Transpose Up
 ```

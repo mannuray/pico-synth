@@ -1,19 +1,28 @@
 #include "AppController.h"
+#include "ArduinoPlatform.h"
 #include "I2SAudioOutput.h"
 #include <MIDIUSB.h>
+#include "MatrixScanner.h"
+#include "MicInput.h"
 #include "MidiEventSink.h"
 #include "SerialDebugSink.h"
+#include "SynthEngine.h"
 #include "SynthEventSink.h"
 
 namespace {
+ArduinoClock systemClock;
+UsbMidiHostLink hostLink;
+BuiltinStatusLed statusLed;
 MatrixScanner matrixScanner;
 MicInput micInput;
 I2SAudioOutput audioOutput;
 SynthEngine synth(audioOutput);
 SynthEventSink synthSink(synth);
 MidiEventSink midiSink;
-SerialDebugSink debugSink;
-AppController app(matrixScanner, micInput, synth, synthSink, midiSink, debugSink);
+SerialDebugSink debugSink(Serial);
+OutputRouter router(synthSink, midiSink, debugSink, OutputMode::SynthOnly);
+PerformanceController performance(router, Serial);
+AppController app(matrixScanner, micInput, synth, router, performance, hostLink, statusLed, systemClock, Serial);
 }  // namespace
 
 void setup() {
@@ -30,6 +39,9 @@ void setup() {
     }
   }
 
+  matrixScanner.begin();
+  micInput.begin();
+  statusLed.begin(systemClock.nowMs());
   app.begin();
 
   Serial.println();

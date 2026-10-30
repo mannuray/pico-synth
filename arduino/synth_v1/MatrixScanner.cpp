@@ -11,7 +11,7 @@ void MatrixScanner::begin() {
   }
 }
 
-bool MatrixScanner::poll(Event &event) {
+bool MatrixScanner::poll(KeyMatrixEvent &event) {
   if (eventIndex_ >= pendingCount_) {
     pendingCount_ = 0;
     eventIndex_ = 0;
@@ -28,7 +28,7 @@ bool MatrixScanner::poll(Event &event) {
 
 void MatrixScanner::queueEvent(uint8_t row, uint8_t col, bool pressed) {
   if (pendingCount_ < (config::kRowCount * config::kColCount)) {
-    pending_[pendingCount_++] = Event{row, col, pressed};
+    pending_[pendingCount_++] = KeyMatrixEvent{row, col, pressed};
   }
 }
 

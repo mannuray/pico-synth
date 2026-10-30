@@ -122,6 +122,10 @@ Available master effects (one active at a time):
 
 Per-preset default effect is auto-enabled when switching presets.
 
+Each effect is a class in `Effects.h` with two optional hooks: per-voice modulation (pitch offset or gain, computed once per frame) and processing of the master mix. To add an effect, write the class, add an `EffectType` entry and register it in `EffectRack`.
+
+On the organ presets the rotary speaker replaces the effect's stereo output while a voice is sounding.
+
 ### Built-in Per-Preset Vibrato
 
 Solo instruments (violin, clarinet, flute) have vibrato that runs independently of the global effect toggle. Precomputed phase step per voice (no float in hot path).
@@ -142,7 +146,7 @@ For JazzOrg and FullOrg presets:
 ## Performance Optimizations
 
 - All wavetable + sine data in flash (zero RAM)
-- Precomputed phase steps for LFO, metronome, rotary (no float in inner loop)
+- Precomputed phase steps for LFO and rotary (no float in inner loop)
 - All divisions replaced with bit shifts in the hot path
 - Precomputed filter constants (baseCutoff, resonanceDamping) in recomputeEnvelope
 - Inactive voices skipped before function call
@@ -158,7 +162,7 @@ For JazzOrg and FullOrg presets:
 - **Hat**: high-passed short noise
 - **Perc**: click/blip synthesized hit
 
-8 rhythm patterns selectable via front-panel buttons. Tempo shared with metronome. Humanization jitter (0-31 samples) for natural feel.
+8 rhythm patterns selectable via front-panel buttons. Humanization jitter (0-31 samples) for natural feel.
 
 Patterns are stored as compact bitmasks (8 bytes per pattern). Mixed into the output after voice rendering.
 

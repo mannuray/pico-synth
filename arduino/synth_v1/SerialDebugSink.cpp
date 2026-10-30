@@ -3,25 +3,19 @@
 void SerialDebugSink::handleEvent(const KeyboardEvent &event) {
   switch (event.type) {
     case KeyboardEventType::NoteOn:
-      Serial.print("evt note_on ");
-      Serial.println(event.note);
+      out_.print("evt note_on ");
+      out_.println(event.note);
       break;
     case KeyboardEventType::NoteOff:
-      Serial.print("evt note_off ");
-      Serial.println(event.note);
-      break;
-    case KeyboardEventType::Control:
-      Serial.print("evt control ");
-      Serial.print(static_cast<uint8_t>(event.control));
-      Serial.print(" value=");
-      Serial.println(event.value);
+      out_.print("evt note_off ");
+      out_.println(event.note);
       break;
   }
 }
 
 void SerialDebugSink::handleCommand(const PerformanceCommand &command) {
-  Serial.print("cmd control ");
-  Serial.print(static_cast<uint8_t>(command.control));
-  Serial.print(" value=");
-  Serial.println(command.value);
+  out_.print("cmd ");
+  out_.print(static_cast<uint8_t>(command.type));
+  out_.print(" value=");
+  out_.println(command.value);
 }

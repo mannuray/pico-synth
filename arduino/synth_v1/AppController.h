@@ -1,65 +1,48 @@
 #pragma once
 
-#include "IEventSink.h"
-#include "KeyboardState.h"
-#include "MatrixMap.h"
-#include "MatrixScanner.h"
-#include "MicInput.h"
-#include "PerformanceState.h"
-#include "SynthEngine.h"
+#include "CpuMeter.h"
+#include "IAudioRenderer.h"
+#include "IClock.h"
+#include "IHostLink.h"
+#include "IKeyMatrix.h"
+#include "ILevelInput.h"
+#include "IStatusIndicator.h"
+#include "OutputRouter.h"
+#include "PerformanceController.h"
 
+// Main loop: schedules scanning, audio rendering and status reporting,
+// and picks the output mode from the USB host connection.
 class AppController {
 public:
-  enum class OutputMode : uint8_t {
-    SynthOnly = 0,
-    MidiOnly,
-    SynthAndMidi,
-    Debug
-  };
-
-  AppController(MatrixScanner &matrixScanner,
-                MicInput &micInput,
-                SynthEngine &synthEngine,
-                IEventSink &synthSink,
-                IEventSink &midiSink,
-                IEventSink &debugSink);
+  AppController(IKeyMatrix &keyMatrix,
+                ILevelInput &levelInput,
+                IAudioRenderer &audioRenderer,
+                OutputRouter &router,
+                PerformanceController &performance,
+                IHostLink &hostLink,
+                IStatusIndicator &statusIndicator,
+                const IClock &clock,
+                Print &log);
 
   void begin();
   void tick();
   void printStatus() const;
 
 private:
-  MatrixScanner &matrixScanner_;
-  MicInput &micInput_;
-  SynthEngine &synth_;
-  IEventSink &synthSink_;
-  IEventSink &midiSink_;
-  IEventSink &debugSink_;
-  KeyboardState keyboardState_;
-  PerformanceState performanceState_;
+  IKeyMatrix &keyMatrix_;
+  ILevelInput &levelInput_;
+  IAudioRenderer &audioRenderer_;
+  OutputRouter &router_;
+  PerformanceController &performance_;
+  IHostLink &hostLink_;
+  IStatusIndicator &statusIndicator_;
+  const IClock &clock_;
+  Print &log_;
+  CpuMeter cpuMeter_;
   uint16_t micLevel_ = 0;
-  OutputMode outputMode_ = OutputMode::SynthAndMidi;
   uint32_t lastScanMs_ = 0;
   uint32_t lastStatusMs_ = 0;
-  uint32_t lastLedMs_ = 0;
-  uint32_t ledFlashUntilMs_ = 0;
-  uint32_t lastMeasurementUs_ = 0;
-  uint32_t totalProcessingUs_ = 0;
-  uint16_t cpuLoad_ = 0;
-  int8_t attackOffset_ = 0;
-  int8_t decayOffset_ = 0;
-  int8_t sustainOffset_ = 0;
-  int8_t releaseOffset_ = 0;
 
-  void updatePreset();
-  void releaseSustainedNotes();
-  void processMatrix();
-  void handleNoteEvent(const MatrixBinding &binding, bool pressed);
-  void handleControlPress(const MatrixBinding &binding);
-  void updateStatusLed(uint32_t now);
-  void dispatchControlCommand(ControlType control, uint8_t value);
-  void dispatchEvent(const KeyboardEvent &event);
-  void dispatchCommand(const PerformanceCommand &command);
-  static const char *modeName(OutputMode mode);
-  static const char *effectName(EffectType effect);
+  OutputMode detectOutputMode();
+  void processMatrix(uint32_t nowMs);
 };

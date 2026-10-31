@@ -5,8 +5,8 @@ Main firmware for the Pico Synth. See the [project README](../../README.md) for 
 ## Quick Build
 
 ```bash
-arduino-cli compile -b rp2040:rp2040:rpipico:opt=Optimize2 arduino/synth_v1
-arduino-cli upload -b rp2040:rp2040:rpipico:opt=Optimize2 -p /dev/cu.usbmodem2101 arduino/synth_v1
+arduino-cli compile -b rp2040:rp2040:rpipico:opt=Optimize2,freq=250 arduino/synth_v1
+arduino-cli upload -b rp2040:rp2040:rpipico:opt=Optimize2,freq=250 -p /dev/cu.usbmodem2101 arduino/synth_v1
 ```
 
 ## File Overview

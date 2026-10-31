@@ -149,15 +149,15 @@ The I2S output queue is `kI2SBufferCount` x `kI2SBufferFrames` = 6 x 64 stereo f
 
 ## Performance
 
-The audio budget is 1.45 ms per 64-sample block (about 4,500 CPU cycles per sample at 200 MHz). Measured on the Pico (200 MHz, `-O2`), with all 8 voices sounding, drums playing and the preset's effect on:
+The audio budget is 1.45 ms per 64-sample block. The firmware runs the RP2040 at 250 MHz (a mild, widely used overclock; `sketch.yaml`). Measured on the Pico (`-O2`), with all 8 voices sounding, drums playing and the preset's effect on:
 
-| Presets | CPU |
-|---|---|
-| Basses, Pluck, WahClav, Chiptune, RingMod | 52-58% |
-| JazzOrg, EPiano, Bells | 63-72% |
-| GrandPno, NylonGtr, Violin, Cello, Flute, Clarinet, Trumpet, Harmonica | 77-79% |
-| Unison presets: ChurchOrg, Accordion, Strings, Choir, SpacePad | 98-101% |
-| Brass | 112% |
+| Presets | 250 MHz | 200 MHz (stock) |
+|---|---|---|
+| Basses, Pluck, WahClav, Chiptune, RingMod | 42-47% | 52-58% |
+| JazzOrg, EPiano, Bells | 50-57% | 63-72% |
+| GrandPno, NylonGtr, Violin, Cello, Flute, Clarinet, Trumpet, Harmonica, SynthLead | 61-63% | 77-79% |
+| Unison presets: ChurchOrg, Accordion, Strings, Choir, SpacePad | 79-81% | 98-101% |
+| Brass | 89% (94% worst block) | 112% |
 
 (The original engine needed 100-235% for the same test.) This is the worst case; typical 3-5 note playing is well below it. What keeps it there:
 

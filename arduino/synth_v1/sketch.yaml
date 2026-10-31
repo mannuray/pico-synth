@@ -1,3 +1,6 @@
 # Default board for `arduino-cli compile/upload arduino/synth_v1` without -b.
-# opt=Optimize2 builds with -O2: ~10% less CPU than the core's default -Os.
-default_fqbn: rp2040:rp2040:rpipico:opt=Optimize2
+# opt=Optimize2: -O2, ~10% less CPU than the core's default -Os.
+# freq=250: 250 MHz (mild, widely used RP2040 overclock; stock is 200 MHz).
+# At 200 MHz the unison presets (ChurchOrg, Accordion, Strings, Choir,
+# SpacePad, Brass) can't render 8 voices + drums in real time.
+default_fqbn: rp2040:rp2040:rpipico:opt=Optimize2,freq=250

@@ -1,6 +1,7 @@
 // RhythmEngine: pattern data is well formed, hits land on the grid (with swing),
 // fills and crashes come on the right bars, and patterns recall their tempo.
 #include "RhythmEngine.h"
+#include "catalog.h"
 #include "check.h"
 #include <math.h>
 #include <string.h>
@@ -24,6 +25,8 @@ static void patternsAreWellFormed() {
     CHECK(first != nullptr);
     const size_t length = strlen(first);
     CHECK(p.stepsPerBar == 12 || p.stepsPerBar == 16);
+    CHECK(p.stepsPerBeat == 3 || p.stepsPerBeat == 4);
+    CHECK(p.stepsPerBeat == 4 || p.swingPercent == 50);  // triplet grids are already swung
     CHECK(length % p.stepsPerBar == 0);
     CHECK(p.swingPercent >= 50 && p.swingPercent <= 75);
     CHECK(p.defaultBpm >= config::kTempoMinBpm && p.defaultBpm <= config::kTempoMaxBpm);
@@ -74,22 +77,31 @@ static long onsetAfter(const std::vector<int32_t> &x, size_t at, size_t window, 
   return -1;
 }
 
-// Kick on beat 1 of Pop lands within the humanization window (<= 64 samples);
-// Funk's off-beat 16ths are pushed late by the swing (56% => 12% of a step pair).
+// Rock's beat-1 kick lands within the humanization window (<= 64 samples);
+// Samba's off-beat 16ths are pushed late by its swing (54% => 8% of a step pair).
 static void hitsLandOnTheGrid() {
-  const auto pop = renderPattern(0, 100, 3.0);
-  const long first = onsetAfter(pop, 0, 2000, 2000);
+  const auto rock = renderPattern(findPattern("Rock"), 112, 3.0);
+  const long first = onsetAfter(rock, 0, 2000, 2000);
   CHECK(first >= 0 && first <= 64);
 
-  const uint8_t bpm = 96;
+  const uint8_t bpm = 100;
   const double step = config::kSampleRate * 60.0 / (bpm * 4);
-  const auto funk = renderPattern(4, bpm, 3.0);
-  // Step 2 (an even 16th, straight) carries a kick; step 1 (odd, swung) only a ghost hat.
-  const long straight = onsetAfter(funk, static_cast<size_t>(2 * step), static_cast<size_t>(step), 2000);
+  const auto samba = renderPattern(findPattern("Samba"), bpm, 3.0);
+  // Step 2 (even, straight) and step 1 (odd, swung) both carry a hat.
+  const long straight = transientAfter(samba, static_cast<size_t>(2 * step), static_cast<size_t>(step), 300);
   CHECK(straight >= 0 && straight <= 64);
-  const long expectedSwing = static_cast<long>(step * 2 * 0.06);
-  const long swung = transientAfter(funk, static_cast<size_t>(step), static_cast<size_t>(step), 300);
+  const long expectedSwing = static_cast<long>(step * 2 * 0.04);
+  const long swung = transientAfter(samba, static_cast<size_t>(step), static_cast<size_t>(step), 300);
   CHECK(swung >= expectedSwing && swung <= expectedSwing + 64);
+}
+
+// Blues runs on a triplet grid: 3 steps per beat, kick on beats 1 and 3.
+static void tripletGridKeepsTheBeat() {
+  const uint8_t bpm = 96;
+  const size_t beat = static_cast<size_t>(config::kSampleRate * 60.0 / bpm);
+  const auto blues = renderPattern(findPattern("Blues"), bpm, 3.0);
+  // Kick on beat 3; beat 2 has only the snare (whose noise carries a little low end).
+  CHECK(kickEnergy(blues, 2 * beat) > 4 * kickEnergy(blues, beat));
 }
 
 // High-frequency energy in the first 0.2 s of a bar (crash = lots).
@@ -106,7 +118,7 @@ static double crashEnergy(const std::vector<int32_t> &x, size_t start) {
 static void crashFollowsFill() {
   const uint8_t bpm = 112;
   const size_t bar = static_cast<size_t>(config::kSampleRate * 60.0 / bpm * 4);
-  const auto rock = renderPattern(1, bpm, 5.0 * bar / config::kSampleRate + 0.5);
+  const auto rock = renderPattern(findPattern("Rock"), bpm, 5.0 * bar / config::kSampleRate + 0.5);
   CHECK(crashEnergy(rock, 4 * bar) > 4 * crashEnergy(rock, 0));
 }
 
@@ -114,28 +126,28 @@ static void crashFollowsFill() {
 static void waltzIsInThree() {
   const uint8_t bpm = 90;
   const size_t beat = static_cast<size_t>(config::kSampleRate * 60.0 / bpm);
-  const auto waltz = renderPattern(6, bpm, 3.0);
+  const auto waltz = renderPattern(findPattern("Waltz"), bpm, 3.0);
   CHECK(kickEnergy(waltz, 3 * beat) > 10 * kickEnergy(waltz, 4 * beat));  // kick on the next bar's 1, not on beat 2
 }
 
 // Choosing another pattern while playing takes effect at the next bar line,
 // not mid-bar; re-selecting the current pattern doesn't restart it.
-// Pop -> Rock: Rock kicks on step 10 (the "and" of 3), where Pop has only a hat.
+// Twist -> Rock: Rock kicks on step 10 (the "and" of 3), where Twist has only a hat.
 static void patternChangesOnTheBarLine() {
   const uint8_t bpm = 100;
   const size_t step = static_cast<size_t>(config::kSampleRate * 60.0 / (bpm * 4));
   RhythmEngine rhythm;
   rhythm.begin(config::kSampleRate);
   rhythm.setBpm(bpm);
-  rhythm.setPattern(0);  // Pop
+  rhythm.setPattern(findPattern("Twist"));
   rhythm.start();
   std::vector<int32_t> out;
   for (size_t i = 0; i < 5 * step; ++i) out.push_back(rhythm.renderSample());
-  rhythm.setPattern(0);  // same pattern again: no restart
-  rhythm.setPattern(1);  // Rock, chosen during step 5
+  rhythm.setPattern(findPattern("Twist"));  // same pattern again: no restart
+  rhythm.setPattern(findPattern("Rock"));   // chosen during step 5
   for (size_t i = 5 * step; i < 28 * step; ++i) out.push_back(rhythm.renderSample());
   const double downbeatKick = kickEnergy(out, 0);
-  CHECK(kickEnergy(out, 10 * step) * 10 < downbeatKick);  // still Pop for the rest of bar 1
+  CHECK(kickEnergy(out, 10 * step) * 10 < downbeatKick);  // still Twist for the rest of bar 1
   CHECK(kickEnergy(out, 26 * step) * 4 > downbeatKick);   // Rock from bar 2 (16 + 10)
 }
 
@@ -149,7 +161,7 @@ static void introEndingAndFill() {
     RhythmEngine rhythm;
     rhythm.begin(config::kSampleRate);
     rhythm.setBpm(bpm);
-    rhythm.setPattern(1);  // Rock
+    rhythm.setPattern(findPattern("Rock"));
     std::vector<int32_t> out;
     control(rhythm, out, bars);
     return out;
@@ -188,6 +200,7 @@ int main() {
   crashFollowsFill();
   waltzIsInThree();
   patternChangesOnTheBarLine();
+  tripletGridKeepsTheBeat();
   introEndingAndFill();
   return finish("rhythm_test");
 }

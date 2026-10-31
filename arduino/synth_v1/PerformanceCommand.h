@@ -5,8 +5,7 @@
 // A change to performance state. Values are in musical units; each sink
 // converts them to its own representation (synth parameter, MIDI CC, ...).
 enum class CommandType : uint8_t {
-  SelectBank = 0,  // bank index
-  SelectPreset,    // preset index (bank * instruments per bank + slot)
+  SelectPreset = 0,  // preset index (tone button T1-T8 = 0-7)
   Sustain,         // 0 = off, 1 = on
   Volume,          // master volume, config::kMinMasterVolume..kMaxMasterVolume
   Tempo,           // BPM, config::kTempoMinBpm..kTempoMaxBpm

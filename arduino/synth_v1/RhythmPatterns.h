@@ -3,7 +3,7 @@
 #include <Arduino.h>
 
 // A drum pattern, written like a drum-machine grid: one string per drum, one
-// character per 16th-note step.
+// character per step (a 16th note, or an 8th-note triplet on triplet grids).
 //   'X' accent   'x' normal   'g' ghost (quiet)   '.' rest
 // All lanes of a pattern have the same length, a whole number of bars
 // (stepsPerBar steps each); nullptr = the drum doesn't play. The fill lanes
@@ -12,7 +12,8 @@
 struct RhythmPattern {
   const char *name;
   uint8_t defaultBpm;     // tempo recalled when the pattern is selected
-  uint8_t stepsPerBar;    // 16 = 4/4, 12 = 3/4
+  uint8_t stepsPerBeat;   // 4 = 16th notes, 3 = triplets (shuffle, 12/8 feel)
+  uint8_t stepsPerBar;    // 16 = 4/4 in 16ths, 12 = 3/4 in 16ths or 4/4 in triplets
   uint8_t swingPercent;   // 50 = straight, 66 = triplet shuffle (MPC-style swing)
   uint8_t snareSample;    // snare lane sound (snare, rimshot/cross-stick, clap)
   uint8_t percSample;     // perc lane sound (clave, cowbell, ...)

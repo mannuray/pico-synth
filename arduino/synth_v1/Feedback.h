@@ -8,15 +8,13 @@ enum class FeedbackCue : uint8_t {
   Down,    // falling two notes: value went down / switched off
   Center,  // double blip: back to the default (octave 0, transpose 0)
   Limit,   // low "bonk": can't go further
-  Blip,    // single blip: changed (volume, effect type)
-  Count    // N blips: bank number
+  Blip     // single blip: changed (volume, effect type)
 };
 
 class IFeedback {
 public:
   virtual ~IFeedback() = default;
-  // count is used by FeedbackCue::Count (1-4).
-  virtual void cue(FeedbackCue cue, uint8_t count = 1) = 0;
+  virtual void cue(FeedbackCue cue) = 0;
   // Turning feedback on or off confirms itself with Up/Down even when off.
   virtual void setEnabled(bool enabled) = 0;
   virtual bool enabled() const = 0;
@@ -26,7 +24,7 @@ public:
 // the effects, and never sent over MIDI.
 class FeedbackSounds final : public IFeedback {
 public:
-  void cue(FeedbackCue cue, uint8_t count = 1) override;
+  void cue(FeedbackCue cue) override;
   void setEnabled(bool enabled) override;
   bool enabled() const override { return enabled_; }
 

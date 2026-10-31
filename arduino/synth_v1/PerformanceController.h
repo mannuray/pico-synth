@@ -49,7 +49,6 @@ private:
 
   // One handler per button action
   void selectInstrument(uint8_t slot);
-  void stepBank(int8_t direction);
   void stepOctave(int8_t direction);
   void stepTranspose(int8_t direction);
   void stepVolume(int8_t direction);

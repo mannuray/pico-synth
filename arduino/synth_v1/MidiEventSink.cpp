@@ -82,10 +82,6 @@ void MidiEventSink::handleEvent(const KeyboardEvent &event) {
 
 void MidiEventSink::handleCommand(const PerformanceCommand &command) {
   switch (command.type) {
-    case CommandType::SelectBank:
-      // Not sent: GM Level 1 has no banks, and on GS/GM2 modules a bank number
-      // would pick variation sounds. The program change identifies the sound.
-      break;
     case CommandType::SelectPreset:
       sendProgramChange(presets::at(static_cast<uint8_t>(command.value)).gmProgram);
       break;

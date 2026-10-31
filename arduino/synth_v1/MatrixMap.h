@@ -38,20 +38,20 @@ constexpr MatrixBinding kMatrixBindings[9][8] = {
     buildControl(ControlType::EffectToggle)     // R0 C7
   },
   {
-    buildControl(ControlType::InstrumentSelect, 0), // R1 C0
-    buildControl(ControlType::InstrumentSelect, 1), // R1 C1
-    buildControl(ControlType::InstrumentSelect, 2), // R1 C2
-    buildControl(ControlType::InstrumentSelect, 3), // R1 C3
-    buildControl(ControlType::InstrumentSelect, 4), // R1 C4
-    buildControl(ControlType::InstrumentSelect, 5), // R1 C5
-    buildControl(ControlType::InstrumentSelect, 6), // R1 C6
-    buildControl(ControlType::InstrumentSelect, 7)  // R1 C7
+    buildControl(ControlType::InstrumentSelect, 4), // R1 C0 = T5
+    buildControl(ControlType::InstrumentSelect, 5), // R1 C1 = T6
+    buildControl(ControlType::InstrumentSelect, 6), // R1 C2 = T7
+    buildControl(ControlType::InstrumentSelect, 7), // R1 C3 = T8
+    buildControl(ControlType::InstrumentSelect, 0), // R1 C4 = T1
+    buildControl(ControlType::InstrumentSelect, 1), // R1 C5 = T2
+    buildControl(ControlType::InstrumentSelect, 2), // R1 C6 = T3
+    buildControl(ControlType::InstrumentSelect, 3)  // R1 C7 = T4
   },
   {
     buildNote(36), // R2 C0
-    buildControl(ControlType::RhythmFill),  // R2 C1
-    buildControl(ControlType::SyncStart),   // R2 C2
-    buildControl(ControlType::IntroEnding), // R2 C3
+    kEmptyBinding,                        // R2 C1 (no button)
+    kEmptyBinding,                        // R2 C2 (no button)
+    kEmptyBinding,                        // R2 C3 (no button)
     buildNote(32), // R2 C4
     buildNote(33), // R2 C5
     buildNote(34), // R2 C6
@@ -90,22 +90,22 @@ constexpr MatrixBinding kMatrixBindings[9][8] = {
   {
     buildControl(ControlType::OctaveUp),      // R6 C0
     buildControl(ControlType::SustainToggle), // R6 C1
-    buildControl(ControlType::LeslieSpeed),   // R6 C2
+    kEmptyBinding,                            // R6 C2 (no button)
     buildControl(ControlType::TempoUp),       // R6 C3
     buildControl(ControlType::VolumeUp),      // R6 C4
-    buildControl(ControlType::BankDown),      // R6 C5
-    buildControl(ControlType::BankUp),        // R6 C6
+    buildControl(ControlType::RhythmFill),    // R6 C5 = Dog
+    buildControl(ControlType::IntroEnding),   // R6 C6 = Frog
     buildControl(ControlType::OctaveDown)     // R6 C7
   },
   {
-    buildControl(ControlType::RhythmSelect, 0), // R7 C0
-    buildControl(ControlType::RhythmSelect, 1), // R7 C1
-    buildControl(ControlType::RhythmSelect, 2), // R7 C2
-    buildControl(ControlType::RhythmSelect, 3), // R7 C3
-    buildControl(ControlType::RhythmSelect, 4), // R7 C4
-    buildControl(ControlType::RhythmSelect, 5), // R7 C5
-    buildControl(ControlType::RhythmSelect, 6), // R7 C6
-    buildControl(ControlType::RhythmSelect, 7)  // R7 C7
+    buildControl(ControlType::RhythmSelect, 4), // R7 C0 = R5
+    buildControl(ControlType::RhythmSelect, 5), // R7 C1 = R6
+    buildControl(ControlType::RhythmSelect, 6), // R7 C2 = R7
+    buildControl(ControlType::RhythmSelect, 7), // R7 C3 = R8
+    buildControl(ControlType::RhythmSelect, 0), // R7 C4 = R1
+    buildControl(ControlType::RhythmSelect, 1), // R7 C5 = R2
+    buildControl(ControlType::RhythmSelect, 2), // R7 C6 = R3
+    buildControl(ControlType::RhythmSelect, 3)  // R7 C7 = R4
   },
   {
     buildNote(4), // R8 C0

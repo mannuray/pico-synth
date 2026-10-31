@@ -12,7 +12,7 @@ constexpr uint32_t msToSamples(uint32_t ms) {
 }
 }  // namespace
 
-void FeedbackSounds::cue(FeedbackCue cue, uint8_t count) {
+void FeedbackSounds::cue(FeedbackCue cue) {
   if (!enabled_) {
     return;
   }
@@ -40,11 +40,6 @@ void FeedbackSounds::cue(FeedbackCue cue, uint8_t count) {
     case FeedbackCue::Blip: {
       static constexpr Tone tones[] = {{1200, 40, 0}};
       play(tones, 1);
-      break;
-    }
-    case FeedbackCue::Count: {
-      static constexpr Tone tones[] = {{1200, 40, 70}, {1200, 40, 70}, {1200, 40, 70}, {1200, 40, 0}};
-      play(tones, static_cast<uint8_t>(constrain(count, 1, 4)));
       break;
     }
   }

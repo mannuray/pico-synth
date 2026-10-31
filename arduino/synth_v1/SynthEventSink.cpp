@@ -49,7 +49,6 @@ void SynthEventSink::handleCommand(const PerformanceCommand &command) {
       synth_.allNotesOff();
       break;
     case CommandType::Sustain:        // the controller holds back note-offs while sustain is on
-    case CommandType::SelectBank:     // the preset index already includes the bank
     case CommandType::OctaveShift:    // applied to note numbers before they arrive
     case CommandType::Transpose:      // applied to note numbers before they arrive
       break;

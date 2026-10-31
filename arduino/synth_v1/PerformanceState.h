@@ -8,9 +8,6 @@
 // Single source of truth for performance settings. Output sinks only mirror it.
 class PerformanceState {
 public:
-  void setBank(uint8_t bank);
-  uint8_t bank() const;
-
   void setInstrumentSlot(uint8_t slot);
   uint8_t instrumentSlot() const;
 
@@ -46,7 +43,6 @@ public:
   bool rotaryFast() const;
 
 private:
-  uint8_t bank_ = 0;
   uint8_t instrumentSlot_ = 0;
   EffectType effect_ = EffectType::Vibrato;
   bool effectEnabled_ = false;

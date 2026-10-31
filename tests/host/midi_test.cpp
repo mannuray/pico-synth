@@ -4,6 +4,7 @@
 #include "SynthEngine.h"
 #include "SynthEventSink.h"
 #include <MIDIUSB.h>
+#include "catalog.h"
 #include "check.h"
 #include <string>
 #include <vector>
@@ -67,20 +68,20 @@ int main() {
   CHECK(renderer.calls == rendersBefore + 1);
   renderer.feedback = false;
 
-  perf.handleControl(ControlType::InstrumentSelect, 1);   // GrandPno (Reverb) -> EPiano (Chorus)
-  CHECK(wire() == "C0 04 00 | B0 17 02");                 // GM program 5 "Electric Piano 1", CC23=Chorus
-  perf.handleControl(ControlType::InstrumentSelect, 1);   // same preset again
-  CHECK(wire() == "C0 04 00");
-  perf.handleControl(ControlType::BankUp, 0);             // -> bank 1 slot 1 Cello (Reverb)
-  CHECK(wire() == "C0 2A 00 | B0 17 03");                 // no bank select; GM program 43 "Cello"
+  perf.handleControl(ControlType::InstrumentSelect, findPreset("Organ"));
+  CHECK(wire() == "C0 10 00 | B0 18 00");                 // GM program 17 "Drawbar Organ"; its effect off (CC24 0)
+  perf.handleControl(ControlType::InstrumentSelect, findPreset("Organ"));   // again: Leslie fast, not MIDI
+  CHECK(wire() == "");
+  perf.handleControl(ControlType::InstrumentSelect, findPreset("Violin"));
+  CHECK(wire() == "C0 28 00 | B0 18 01");                 // GM program 41 "Violin"; effect on
+  perf.handleControl(ControlType::InstrumentSelect, findPreset("Violin"));  // again: just reloads
+  CHECK(wire() == "C0 28 00");
   perf.handleControl(ControlType::VolumeDown, 0);
   CHECK(wire() == "B0 07 43");                            // -3 dB step: 17398 -> CC7 67
   perf.handleControl(ControlType::OctaveUp, 0);
   CHECK(wire() == "B0 15 03");
   perf.handleControl(ControlType::TransposeDown, 0);
   CHECK(wire() == "B0 16 0B");
-  perf.handleControl(ControlType::LeslieSpeed, 0);        // no rotary on Cello: nothing sent
-  CHECK(wire() == "");
   perf.handleControl(ControlType::RhythmStartStop, 0);
   CHECK(wire() == "B0 6F 01");
   for (int i = 0; i < 30; ++i) perf.handleControl(ControlType::TempoUp, 0);  // clamps at 240

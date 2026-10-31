@@ -6,8 +6,6 @@
 enum class ControlType : uint8_t {
   None = 0,
   InstrumentSelect,
-  BankDown,
-  BankUp,
   OctaveDown,
   OctaveUp,
   SustainToggle,
@@ -22,8 +20,6 @@ enum class ControlType : uint8_t {
   RhythmSelect,
   TransposeDown,
   TransposeUp,
-  RhythmFill,      // play a fill on the next bar
-  SyncStart,       // arm: the rhythm starts with the first key played
-  IntroEnding,     // stopped: start with an intro fill; playing: end with a fill and crash
-  LeslieSpeed      // organ: rotary speaker fast/slow
+  RhythmFill,      // playing: fill on the next bar; stopped: arm/disarm sync start
+  IntroEnding      // stopped: start with an intro fill; playing: end with a fill and crash
 };

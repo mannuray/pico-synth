@@ -1,16 +1,8 @@
 #include "PerformanceState.h"
 #include "RhythmPatterns.h"
 
-void PerformanceState::setBank(uint8_t bank) {
-  bank_ = min<uint8_t>(config::kBankCount - 1, bank);
-}
-
-uint8_t PerformanceState::bank() const {
-  return bank_;
-}
-
 void PerformanceState::setInstrumentSlot(uint8_t slot) {
-  instrumentSlot_ = min<uint8_t>(config::kInstrumentsPerBank - 1, slot);
+  instrumentSlot_ = min<uint8_t>(config::kPresetCount - 1, slot);
 }
 
 uint8_t PerformanceState::instrumentSlot() const {
@@ -18,7 +10,7 @@ uint8_t PerformanceState::instrumentSlot() const {
 }
 
 uint8_t PerformanceState::activePresetIndex() const {
-  return bank_ * config::kInstrumentsPerBank + instrumentSlot_;
+  return instrumentSlot_;
 }
 
 void PerformanceState::setEffect(EffectType effect) {

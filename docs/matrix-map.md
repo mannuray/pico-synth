@@ -205,30 +205,28 @@ R0 C1 = Rec
 R0 C2 = Play
 ```
 
-### Synth V1 Repurposed Functions
+### Synth V1 Functions
 
-For Synth V1, the above controls are repurposed as:
-
-```text
-R6 C5 = Bank Down
-R6 C6 = Bank Up
-R6 C7 = Octave Down
-R6 C0 = Octave Up
-R6 C1 = Sustain
-
-R0 C5 = Panic (hold 2 s: feedback sounds on/off)
-R0 C6 = Effect Select
-R0 C7 = Effect On/Off
-R0 C0 = Rhythm Start/Stop
-R0 C1 = Transpose Down
-R0 C2 = Transpose Up
-```
-
-The four remaining buttons (no toy label recorded) are rhythm controls:
+Verified on the device by pressing each button and reading the serial log.
 
 ```text
-R2 C1 = Fill
-R2 C2 = Sync Start
-R2 C3 = Intro/Ending
-R6 C2 = Leslie fast/slow
+R1 C4..C7 = T1..T4    R1 C0..C3 = T5..T8    (tone buttons -> instruments 1-8)
+R7 C4..C7 = R1..R4    R7 C0..C3 = R5..R8    (rhythm buttons -> patterns 1-8)
+
+R6 C5 = Dog           Fill (stopped: Sync Start)
+R6 C6 = Frog          Intro/Ending
+R6 C7 = Duck          Octave Down
+R6 C0 = Bird          Octave Up
+R6 C1 = Drum/Animal   Sustain
+
+R0 C5 = Stop          Panic (hold 2 s: feedback sounds on/off)
+R0 C6 = Demo A        Effect Select
+R0 C7 = Demo B        Effect On/Off
+R0 C0 = Demo C        Rhythm Start/Stop
+R0 C1 = Rec           Transpose Down
+R0 C2 = Play          Transpose Up
+R0 C3 / R6 C3         Tempo - / +
+R0 C4 / R6 C4         Volume - / +
 ```
+
+R2 C1-C3 and R6 C2 have no button on this keyboard.

@@ -35,8 +35,6 @@ void PerformanceController::handleControl(ControlType control, uint8_t value) {
   hitLimit_ = false;
   switch (control) {
     case ControlType::InstrumentSelect: selectInstrument(value); break;
-    case ControlType::BankDown:         stepBank(-1); break;
-    case ControlType::BankUp:           stepBank(+1); break;
     case ControlType::OctaveDown:       stepOctave(-1); break;
     case ControlType::OctaveUp:         stepOctave(+1); break;
     case ControlType::TransposeDown:    stepTranspose(-1); break;
@@ -51,9 +49,7 @@ void PerformanceController::handleControl(ControlType control, uint8_t value) {
     case ControlType::RhythmStartStop:  toggleRhythm(); break;
     case ControlType::RhythmSelect:     selectRhythm(value); break;
     case ControlType::RhythmFill:       rhythmFill(); break;
-    case ControlType::SyncStart:        toggleSyncStart(); break;
     case ControlType::IntroEnding:      introOrEnding(); break;
-    case ControlType::LeslieSpeed:      toggleLeslie(); break;
     case ControlType::Panic:            panic(); break;
     case ControlType::None:             break;
   }
@@ -64,7 +60,6 @@ void PerformanceController::toggleFeedback() {
 }
 
 void PerformanceController::syncOutputs() {
-  sendQuiet(CommandType::SelectBank, performance_.bank());
   sendPresetState();
   sendQuiet(CommandType::Sustain, performance_.sustainEnabled() ? 1 : 0);
   sendQuiet(CommandType::Volume, performance_.masterVolume());
@@ -125,23 +120,14 @@ void PerformanceController::releaseSustainedNotes() {
 
 // ---- Button actions ----
 
+// Pressing the organ's button again switches its Leslie between slow and fast.
 void PerformanceController::selectInstrument(uint8_t slot) {
+  if (slot == performance_.instrumentSlot() && presetHasRotary()) {
+    toggleLeslie();
+    return;
+  }
   performance_.setInstrumentSlot(slot);
   applyActivePreset();
-  logPreset();
-}
-
-// Feedback: N blips for bank N, a "bonk" at either end.
-void PerformanceController::stepBank(int8_t direction) {
-  const int bank = performance_.bank() + direction;
-  if (bank >= 0 && bank < config::kBankCount) {
-    performance_.setBank(static_cast<uint8_t>(bank));
-    send(CommandType::SelectBank, performance_.bank());
-    applyActivePreset();
-    feedback_.cue(FeedbackCue::Count, static_cast<uint8_t>(performance_.bank() + 1));
-  } else {
-    cueLimit();
-  }
   logPreset();
 }
 
@@ -233,9 +219,10 @@ void PerformanceController::selectRhythm(uint8_t pattern) {
   }
 }
 
+// Playing: a fill on the next bar. Stopped: arm (or disarm) sync start.
 void PerformanceController::rhythmFill() {
   if (!performance_.rhythmPlaying()) {
-    cueLimit();
+    toggleSyncStart();
     return;
   }
   send(CommandType::RhythmFill, 0);
@@ -363,9 +350,7 @@ void PerformanceController::logNote(const char *label, uint8_t keyIndex, uint8_t
 }
 
 void PerformanceController::logPreset() {
-  log_.print("bank=");
-  log_.print(performance_.bank());
-  log_.print(" slot=");
+  log_.print("slot=");
   log_.print(performance_.instrumentSlot());
   log_.print(" preset=");
   log_.println(presets::at(performance_.activePresetIndex()).name);

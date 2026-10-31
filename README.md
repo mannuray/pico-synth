@@ -5,7 +5,7 @@ A 37-key polyphonic synthesizer and USB MIDI controller built on the Raspberry P
 ## Features
 
 - **8-voice polyphony** at 44.1 kHz / 16-bit
-- **24 presets** across 3 banks (keys & folk, orchestral, synth), level-matched
+- **8 instruments and 8 rhythms**, matching the labels printed on the keyboard, level-matched
 - **Multi-frame wavetable synthesis** with 14 instrument spectral models (512 samples x 4 frames each, stored in flash)
 - **3-pair FM synthesis** (Algorithm 5 style) for electric piano and bell sounds
 - **PolyBLEP anti-aliased** sawtooth and square oscillators
@@ -16,7 +16,7 @@ A 37-key polyphonic synthesizer and USB MIDI controller built on the Raspberry P
 - **Effects**: reverb, chorus, delay, tremolo, vibrato, bitcrusher
 - **Per-preset default effects** (acoustic instruments get reverb, basses play dry, etc.)
 - **Organ simulation**: key click, single-trigger Hammond percussion, Leslie rotary speaker
-- **Rhythm engine**: 8 patterns (Pop, Rock, Ballad, Disco, Funk, Latin, Waltz, March) with accents, ghost notes, swing, fills and crashes, on a 12-piece drum kit
+- **Rhythm engine**: 8 patterns (Rock, Slow Rock, Twist, Disco, March, Waltz, Samba, Blues) with accents, ghost notes, swing and triplet shuffles, fills and crashes, on a 12-piece drum kit
 - **USB MIDI** with auto-detection (computer = MIDI controller, power only = standalone synth)
 - **Output dithering** for clean quiet tails
 
@@ -42,48 +42,31 @@ A 37-key polyphonic synthesizer and USB MIDI controller built on the Raspberry P
 
 See [docs/matrix-map.md](docs/matrix-map.md) for the full key matrix layout.
 
-## Preset Banks
+## Instruments
 
-Presets are listed in slot order within each bank (which physical button selects which slot is still to be confirmed). Cello and the two basses play an octave below the key.
+| Button | Preset | GM program sent over MIDI |
+|--------|--------|---------------------------|
+| T1 | Piano | 1 Acoustic Grand Piano |
+| T2 | Organ (press again: Leslie slow/fast) | 17 Drawbar Organ |
+| T3 | Violin | 41 Violin |
+| T4 | Trumpet | 57 Trumpet |
+| T5 | Banjo | 106 Banjo |
+| T6 | Bell | 15 Tubular Bells |
+| T7 | Music Box | 11 Music Box |
+| T8 | Guitar | 25 Acoustic Guitar (nylon) |
 
-### Bank 1: Keys & Folk
+## Rhythms
 
-| Slot | Preset | Sound |
-|------|--------|-------|
-| 1 | GrandPno | Piano wavetable, two-stage decay (fast drop, ~7 s tail), darkens as it rings |
-| 2 | EPiano | FM electric piano: 1:1 body plus a 14:1 "tine", chorus |
-| 3 | JazzOrg | Hammond-style: drawbar wavetable, key click, percussion, fast Leslie |
-| 4 | ChurchOrg | Pipe organ: slow pipe speech, slight detune between ranks, reverb |
-| 5 | Accordion | Reed wavetable with musette detuning |
-| 6 | Harmonica | Blues harp with delayed hand vibrato |
-| 7 | NylonGtr | Plucked nylon guitar, two-stage decay |
-| 8 | Bells | Chowning FM bell (5:7 ratio), long inharmonic ring |
-
-### Bank 2: Orchestral
-
-| Slot | Preset | Sound |
-|------|--------|-------|
-| 1 | Violin | Bowed attack, ±22-cent vibrato fading in |
-| 2 | Cello | An octave down, warm, vibrato fading in |
-| 3 | Strings | Section: soft-string wavetable, unison, slow attack |
-| 4 | Flute | Breathy, gentle vibrato |
-| 5 | Clarinet | Odd-harmonic reed, no vibrato (classical style) |
-| 6 | Trumpet | Bright brass, stays brassy while held |
-| 7 | Brass | Section: unison, slower swell |
-| 8 | Choir | Vocal pad, unison, slow attack |
-
-### Bank 3: Synth
-
-| Slot | Preset | Sound |
-|------|--------|-------|
-| 1 | SynthLead | Detuned unison saw, resonant filter, delay |
-| 2 | SpacePad | Wide unison pad, very slow attack and filter sweep, chorus |
-| 3 | FunkBass | Resonant saw "quack", an octave down, dry |
-| 4 | SubBass | Pure sine an octave down, dry |
-| 5 | Pluck | Short resonant saw pluck with delay |
-| 6 | WahClav | Funky clav with a fast resonant filter sweep, dry |
-| 7 | Chiptune | Square wave with 8-bit-style vibrato, bitcrusher |
-| 8 | RingMod | Inharmonic FM (ratio 3.53), metallic, delay |
+| Button | Pattern | Tempo | Feel |
+|--------|---------|-------|------|
+| R1 | Rock | 112 | 8th hats, kick on 1, 3 and the "and" of 3 |
+| R2 | Slow Rock | 66 | 12/8 triplet feel |
+| R3 | Twist | 156 | Early-60s backbeat |
+| R4 | Disco | 120 | Four-on-the-floor, open hats on the "and"s |
+| R5 | March | 116 | Bass drum on every beat, snare drags |
+| R6 | Waltz | 90 | 3/4 "oom-pah-pah" |
+| R7 | Samba | 100 | Surdo-style double kick, shaker 16ths, light swing |
+| R8 | Blues | 96 | Triplet shuffle |
 
 ## Controls
 
@@ -91,8 +74,8 @@ The front-panel buttons are the toy keyboard's original ones, repurposed (toy la
 
 | Button | Function |
 |--------|----------|
-| Instrument 1-8 | Select preset in current bank (loads its default effect) |
-| Bank Down/Up (Dog/Frog) | Banks 1-3; stops at the ends |
+| T1-T8 | Select instrument (loads its default effect). Pressing T2 (Organ) again switches the Leslie slow/fast |
+| R1-R8 | Select rhythm; while stopped it also recalls the pattern's tempo, while playing your tempo is kept and the change happens at the next bar |
 | Octave Down/Up (Duck/Bird) | Shift keyboard +/- 2 octaves |
 | Transpose Down/Up (Rec/Play) | Shift +/- 12 semitones |
 | Volume -/+ | 3 dB per press, down to silence |
@@ -100,13 +83,10 @@ The front-panel buttons are the toy keyboard's original ones, repurposed (toy la
 | Sustain (Drum/Animal) | Latching sustain on/off (MIDI CC64) |
 | Effect Select (Demo A) | Cycle Vibrato, Tremolo, Chorus, Reverb, Delay, Bitcrusher; also switches the effect on |
 | Effect On/Off (Demo B) | Toggle the effect |
+| Start/Stop (Demo C) | Start/stop the drums |
+| Fill (Dog) | Playing: fill on the next bar. Stopped: arm/disarm Sync Start (the rhythm starts with the first key you play) |
+| Intro/Ending (Frog) | Stopped: start with an intro fill. Playing: end with a fill and a crash |
 | Panic (Stop) | All notes off and sustain off; the rhythm keeps playing. **Hold 2 s** to switch the feedback sounds on/off |
-| Rhythm Start/Stop (Demo C) | Start/stop the drums |
-| Rhythm 1-8 | Select pattern; while stopped it also recalls the pattern's tempo, while playing your tempo is kept and the change happens at the next bar |
-| Fill | Play a fill on the next bar |
-| Sync Start | Arm: the rhythm starts with the first key you play |
-| Intro/Ending | Stopped: start with an intro fill. Playing: end with a fill and a crash |
-| Leslie | Organ presets: rotary speaker slow (chorale) / fast (tremolo), with the real motor's speed ramp |
 
 **Hold to repeat:** Tempo, Volume and Transpose repeat while held (after 0.5 s, 10 per second).
 
@@ -119,9 +99,8 @@ The keyboard has no display, so button presses are confirmed with short, quiet s
 | Rising two notes | Up / switched on |
 | Falling two notes | Down / switched off |
 | Double blip | Back to the default (octave 0, transpose 0) |
-| Low "bonk" | Can't go further (limit), or not available (Fill while stopped, Leslie on a non-organ preset) |
+| Low "bonk" | Can't go further (limit) |
 | Single blip | Changed (volume: standalone, it plays at the new level; effect type) |
-| 1-3 blips | Bank number |
 
 Hold Panic for 2 seconds to switch them off or on (they are on again after power-up). Holding a repeating button at its limit gives one "bonk" and stops repeating.
 
@@ -136,7 +115,7 @@ The keyboard auto-detects its connection:
 
 The device appears as **"Synth Pico MIDI"** in DAWs and MIDI monitors. Sends note on/off, sustain (CC64), volume (CC7), and program changes.
 
-Choosing a preset sends its **General MIDI program number**, so a GM instrument on the computer switches to the matching sound (GrandPno -> Acoustic Grand Piano, Violin -> Violin, and so on; see `gmProgram` in `Presets.cpp`). No bank select is sent: GM Level 1 has no banks.
+Choosing a preset sends its **General MIDI program number**, so a GM instrument on the computer switches to the matching sound (Piano -> Acoustic Grand Piano, Violin -> Violin, and so on; see `gmProgram` in `Presets.cpp`). No bank select is sent: GM Level 1 has no banks.
 
 The mode only switches once the connection has been stable for half a second, so a flaky cable doesn't cut notes off.
 
@@ -193,7 +172,7 @@ python3 tools/extract_wavetable.py recording.wav --name Piano --table-size 512 -
 synth_v1.ino          Entry point, wires up components
 AppController         Main loop: scheduling, USB mode detection
 PerformanceController Key/button presses -> state changes -> output commands
-PerformanceState      Bank, preset, effect, sustain, tempo, volume state
+PerformanceState      Instrument, effect, sustain, tempo, volume, rhythm state
 PitchSettings         Octave/transpose, key -> MIDI note
 KeyTracker            Held and sustained keys
 OutputRouter          Sends events/commands to the sinks for the current mode

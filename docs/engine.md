@@ -120,7 +120,7 @@ Available master effects (one active at a time):
 | Delay | ~186 ms echo with 45% feedback |
 | Bitcrusher | 4-bit resolution, 4x downsample |
 
-Choosing a preset selects its default effect and switches it on, unless the preset has `effectEnabled = false` (the basses and JazzOrg).
+Choosing a preset selects its default effect and switches it on, unless the preset has `effectEnabled = false` (the Organ).
 
 Each effect is a class in `Effects.h` with two optional hooks: per-voice modulation (relative pitch change or gain, computed once per frame) and in-place processing of the stereo master mix. To add an effect, write the class, add an `EffectType` entry and register it in `EffectRack`.
 
@@ -190,16 +190,18 @@ Patterns are written like a drum-machine grid in `RhythmEngine.cpp`: one string 
 - **Tempo**: each pattern has a usual tempo, recalled when it is selected (Tempo Up/Down still adjusts it).
 - **Humanization**: each hit starts 0-1.4 ms late at random, without moving the beat grid.
 
-| Pattern | Tempo | Groove |
-|---|---|---|
-| Pop | 100 | Kick on 1, the "and" of 2 and 3; backbeat; 8th hats. Snare fill. |
-| Rock | 112 | Kick on 1, 3 and the "and" of 3; accented quarter hats. Snare-and-tom fill, crash. |
-| Ballad | 72 | Cross-stick on 2 and 4, soft 8th hats. Tom fill. |
-| Disco | 120 | Four-on-the-floor kick, clap backbeat, closed 16ths with open hats on the "and"s. Clap roll fill. |
-| Funk | 96 | Syncopated kick, ghost notes around the backbeat, accented 16th hats, open hat on the last "and"; 56% swing. |
-| Latin | 105 | Son clave 3-2 over two bars, tumbao-style kick, shaker-like hats. No fill (the clave never breaks). |
-| Waltz | 90 | 3/4 "oom-pah-pah". |
-| March | 116 | Bass drum on every beat, snare drags into accented 2 and 4. Roll fill. |
+| Pattern | Tempo | Grid | Groove |
+|---|---|---|---|
+| Rock | 112 | 16ths | Kick on 1, 3 and the "and" of 3; accented quarter hats. Snare-and-tom fill, crash. |
+| Slow Rock | 66 | triplets | 12/8 feel: all triplets on the hat, kick 1 and 3 with a pickup. Tom fill. |
+| Twist | 156 | 16ths | Early-60s kick/snare backbeat, 8th hats. Snare fill. |
+| Disco | 120 | 16ths | Four-on-the-floor kick, clap backbeat, closed 16ths with open hats on the "and"s. |
+| March | 116 | 16ths | Bass drum on every beat, snare drags into accented 2 and 4. Roll fill. |
+| Waltz | 90 | 16ths, 3/4 | "Oom-pah-pah". |
+| Samba | 100 | 16ths | Surdo-style double kick, even shaker-like hat 16ths, cross-stick figure, 54% swing. |
+| Blues | 96 | triplets | Shuffle: hat on each beat and its last triplet, kick 1 and 3, snare 2 and 4. Tom fill. |
+
+`stepsPerBeat` sets the grid: 4 for 16ths, 3 for triplets (a shuffle's long-short feel). The Samba cross-stick figure and the Twist groove are approximations worth tuning by ear.
 
 ### Mix
 

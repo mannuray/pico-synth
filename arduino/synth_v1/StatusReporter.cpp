@@ -8,8 +8,6 @@ void printStatusLine(Print &out, const StatusSnapshot &status) {
   out.print(presets::at(performance.activePresetIndex()).name);
   out.print(" mode=");
   out.print(outputModeName(status.mode));
-  out.print(" bank=");
-  out.print(performance.bank());
   out.print(" slot=");
   out.print(performance.instrumentSlot());
   out.print(" octave=");

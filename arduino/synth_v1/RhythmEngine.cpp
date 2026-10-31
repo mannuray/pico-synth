@@ -6,24 +6,17 @@
 #include <string.h>
 
 namespace {
-// Step grid:  1e&a2e&a3e&a4e&a   (16 steps = one 4/4 bar of 16th notes)
+// Patterns in button order R1-R8, matching the labels printed on the keyboard.
 //
-// Sources for the grooves: son clave 3-2 hits on 1, 2&, 4 | 2, 3 (two bars);
-// disco = four-on-the-floor kick with open hats on the "and" of each beat;
-// funk = ghost notes around the backbeat (never three in a row).
+// 16th grid:     1e&a2e&a3e&a4e&a   (stepsPerBeat 4)
+// Triplet grid:  1tl2tl3tl4tl       (stepsPerBeat 3; "t" trip, "l" let)
+//
+// Sources: blues shuffle = kick 1 & 3, snare 2 & 4, hat on each beat and its
+// last triplet; slow rock = 12/8 feel, all triplets on the hat; samba = the
+// surdo's two quick bass-drum hits per beat under even shaker-like 16ths;
+// disco = four-on-the-floor with open hats on the "and"s; twist ~156 BPM.
 const RhythmPattern kPatterns[kRhythmPatternCount] = {
-  {.name = "Pop", .defaultBpm = 100, .stepsPerBar = 16, .swingPercent = 50,
-   .snareSample = kDrumId_Snare, .percSample = kDrumId_Clave,
-   .kick      = "X.....x.X.......",
-   .snare     = "....X.......X...",
-   .hat       = "X.x.x.x.X.x.x.x.",
-   .openHat   = nullptr, .perc = nullptr, .tom = nullptr,
-   .fillKick  = nullptr,
-   .fillSnare = "....X.......XxXx",
-   .fillHat   = "X.x.x.x.X.x.....",
-   .fillTom   = nullptr},
-
-  {.name = "Rock", .defaultBpm = 112, .stepsPerBar = 16, .swingPercent = 50,
+  {.name = "Rock", .defaultBpm = 112, .stepsPerBeat = 4, .stepsPerBar = 16, .swingPercent = 50,
    .snareSample = kDrumId_Snare, .percSample = kDrumId_Clave,
    .kick      = "X.......X.x.....",
    .snare     = "....X.......X...",
@@ -34,18 +27,29 @@ const RhythmPattern kPatterns[kRhythmPatternCount] = {
    .fillHat   = "X.x.X.x.........",
    .fillTom   = "............HhLl"},
 
-  {.name = "Ballad", .defaultBpm = 72, .stepsPerBar = 16, .swingPercent = 50,
-   .snareSample = kDrumId_Rimshot, .percSample = kDrumId_Clave,  // cross-stick
-   .kick      = "X.........x.....",
-   .snare     = "....x.......x...",
-   .hat       = "x.g.x.g.x.g.x.g.",
+  {.name = "SlowRock", .defaultBpm = 66, .stepsPerBeat = 3, .stepsPerBar = 12, .swingPercent = 50,
+   .snareSample = kDrumId_Snare, .percSample = kDrumId_Clave,
+   .kick      = "X....xX.....",
+   .snare     = "...X.....X..",
+   .hat       = "XgxXgxXgxXgx",
    .openHat   = nullptr, .perc = nullptr, .tom = nullptr,
    .fillKick  = nullptr,
-   .fillSnare = "....x...........",
-   .fillHat   = "x.g.x.g.........",
-   .fillTom   = "........h.h.m.L."},
+   .fillSnare = "...X........",
+   .fillHat   = "XgxXgx......",
+   .fillTom   = "......hhmmLl"},
 
-  {.name = "Disco", .defaultBpm = 120, .stepsPerBar = 16, .swingPercent = 50,
+  {.name = "Twist", .defaultBpm = 156, .stepsPerBeat = 4, .stepsPerBar = 16, .swingPercent = 50,
+   .snareSample = kDrumId_Snare, .percSample = kDrumId_Clave,
+   .kick      = "X.......X.......",
+   .snare     = "....X.......X...",
+   .hat       = "x.x.x.x.x.x.x.x.",
+   .openHat   = nullptr, .perc = nullptr, .tom = nullptr,
+   .fillKick  = nullptr,
+   .fillSnare = "....X...X.X.XxXx",
+   .fillHat   = "x.x.x.x.........",
+   .fillTom   = nullptr},
+
+  {.name = "Disco", .defaultBpm = 120, .stepsPerBeat = 4, .stepsPerBar = 16, .swingPercent = 50,
    .snareSample = kDrumId_Clap, .percSample = kDrumId_Cowbell,
    .kick      = "X...X...X...X...",
    .snare     = "....X.......X...",
@@ -57,31 +61,19 @@ const RhythmPattern kPatterns[kRhythmPatternCount] = {
    .fillHat   = "xg.gxg.gx...x...",
    .fillTom   = nullptr},
 
-  {.name = "Funk", .defaultBpm = 96, .stepsPerBar = 16, .swingPercent = 56,
+  // Bass drum on every beat; snare drags into the accented 2 and 4.
+  {.name = "March", .defaultBpm = 116, .stepsPerBeat = 4, .stepsPerBar = 16, .swingPercent = 50,
    .snareSample = kDrumId_Snare, .percSample = kDrumId_Clave,
-   .kick      = "X.x.......x..x..",
-   .snare     = "....X..g.g..X..g",
-   .hat       = "XgxgXgxgXgxgXg.g",
-   .openHat   = "..............x.",
-   .perc      = nullptr, .tom = nullptr,
+   .kick      = "X...x...X...x...",
+   .snare     = "x.xxX...x.xxX.x.",
+   .hat       = nullptr, .openHat = nullptr, .perc = nullptr, .tom = nullptr,
    .fillKick  = nullptr,
-   .fillSnare = "....X..g.g..XXxX",
-   .fillHat   = "XgxgXgxgXgxg....",
+   .fillSnare = "x.xxX.xxXxXxXxXx",
+   .fillHat   = nullptr,
    .fillTom   = nullptr},
 
-  // Son clave 3-2 over two bars, with a tumbao-style kick ("and" of 2, beat 4).
-  {.name = "Latin", .defaultBpm = 105, .stepsPerBar = 16, .swingPercent = 50,
-   .snareSample = kDrumId_Rimshot, .percSample = kDrumId_Clave,
-   .kick      = "......x.....X.........x.....X...",
-   .snare     = nullptr,
-   .hat       = "x.g.x.g.x.g.x.g.x.g.x.g.x.g.x.g.",
-   .openHat   = nullptr,
-   .perc      = "X.....X.....X.......X...X.......",
-   .tom       = nullptr,
-   .fillKick  = nullptr, .fillSnare = nullptr, .fillHat = nullptr, .fillTom = nullptr},
-
-  // 3/4: "oom-pah-pah".
-  {.name = "Waltz", .defaultBpm = 90, .stepsPerBar = 12, .swingPercent = 50,
+  // 3/4 in 16ths: "oom-pah-pah".
+  {.name = "Waltz", .defaultBpm = 90, .stepsPerBeat = 4, .stepsPerBar = 12, .swingPercent = 50,
    .snareSample = kDrumId_Snare, .percSample = kDrumId_Clave,
    .kick      = "X...........",
    .snare     = "....g...g...",
@@ -92,16 +84,30 @@ const RhythmPattern kPatterns[kRhythmPatternCount] = {
    .fillHat   = "....x.......",
    .fillTom   = "........m.L."},
 
-  // Bass drum on every beat; snare drags into the accented 2 and 4.
-  {.name = "March", .defaultBpm = 116, .stepsPerBar = 16, .swingPercent = 50,
-   .snareSample = kDrumId_Snare, .percSample = kDrumId_Clave,
-   .kick      = "X...x...X...x...",
-   .snare     = "x.xxX...x.xxX.x.",
-   .hat       = nullptr, .openHat = nullptr, .perc = nullptr, .tom = nullptr,
+  // Surdo-style double kick, shaker-like hat 16ths, cross-stick on the rim,
+  // with a slight samba swing.
+  {.name = "Samba", .defaultBpm = 100, .stepsPerBeat = 4, .stepsPerBar = 16, .swingPercent = 54,
+   .snareSample = kDrumId_Rimshot, .percSample = kDrumId_Clave,
+   .kick      = "x..xX..xx..xX..x",
+   .snare     = "x..x..x...x..x..",
+   .hat       = "xgxgxgxgxgxgxgxg",
+   .openHat   = nullptr, .perc = nullptr, .tom = nullptr,
    .fillKick  = nullptr,
-   .fillSnare = "x.xxX.xxXxXxXxXx",
-   .fillHat   = nullptr,
+   .fillSnare = "x..x..x...xxXxXx",
+   .fillHat   = "xgxgxgxgxg......",
    .fillTom   = nullptr},
+
+  // Shuffle on the triplet grid: long-short hat, kick 1 & 3, snare 2 & 4.
+  {.name = "Blues", .defaultBpm = 96, .stepsPerBeat = 3, .stepsPerBar = 12, .swingPercent = 50,
+   .snareSample = kDrumId_Snare, .percSample = kDrumId_Clave,
+   .kick      = "X.....X.....",
+   .snare     = "...X.....X..",
+   .hat       = "X.xX.xX.xX.x",
+   .openHat   = nullptr, .perc = nullptr, .tom = nullptr,
+   .fillKick  = nullptr,
+   .fillSnare = "...X.....XXX",
+   .fillHat   = "X.xX.x......",
+   .fillTom   = "......HhhMmL"},
 };
 
 // Mix level of each drum (Q8): kick and snare lead, cymbals sit lower.
@@ -247,7 +253,7 @@ const RhythmPattern &rhythmPatternAt(uint8_t patternIndex) {
 }
 
 uint32_t RhythmEngine::stepSamples() const {
-  return (sampleRate_ * 60u) / (static_cast<uint32_t>(bpm_) * 4u);
+  return (sampleRate_ * 60u) / (static_cast<uint32_t>(bpm_) * currentPatternDef().stepsPerBeat);
 }
 
 void RhythmEngine::triggerStep(uint16_t step) {

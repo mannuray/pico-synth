@@ -5,6 +5,7 @@
 #include "SynthEventSink.h"
 #include "SynthEngine.h"
 #include "Presets.h"
+#include "catalog.h"
 #include "check.h"
 #include <vector>
 #include <string>
@@ -18,13 +19,13 @@ struct Rec : IEventSink {
 };
 std::string cmd(CommandType t, int v) { return "c" + std::to_string(int(t)) + "=" + std::to_string(v); }
 
-// Records feedback cues as names ("Up", "Count3", ...).
+// Records feedback cues as names ("Up", "Limit", ...).
 struct RecFeedback : IFeedback {
   std::vector<std::string> cues;
   bool on = true;
-  void cue(FeedbackCue c, uint8_t n) override {
-    static const char *names[] = {"Up", "Down", "Center", "Limit", "Blip", "Count"};
-    cues.push_back(std::string(names[int(c)]) + (c == FeedbackCue::Count ? std::to_string(n) : ""));
+  void cue(FeedbackCue c) override {
+    static const char *names[] = {"Up", "Down", "Center", "Limit", "Blip"};
+    cues.push_back(names[int(c)]);
   }
   void setEnabled(bool e) override { on = e; cues.push_back(e ? "Enabled" : "Disabled"); }
   bool enabled() const override { return on; }
@@ -54,19 +55,17 @@ int main() {
   {
     Rec out; PerformanceController pc(out, gCues, log); pc.begin();
     out.log.clear();
-    pc.handleControl(ControlType::InstrumentSelect, 1);  // GrandPno (Reverb) -> EPiano (Chorus)
-    CHECK(pc.performance().effect() == EffectType::Chorus && pc.performance().effectEnabled());
-    CHECK(out.count(cmd(CommandType::SelectPreset, 1)) == 1);
-    CHECK(out.count(cmd(CommandType::Effect, int(EffectType::Chorus))) == 1);
-    CHECK(out.count(cmd(CommandType::EffectEnabled, 1)) == 0);  // unchanged values aren't re-sent
+    const uint8_t organ = findPreset("Organ"), violin = findPreset("Violin");
+    pc.handleControl(ControlType::InstrumentSelect, organ);   // Piano (Reverb on) -> Organ (effect off)
+    CHECK(!pc.performance().effectEnabled());
+    CHECK(out.count(cmd(CommandType::SelectPreset, organ)) == 1);
+    CHECK(out.count(cmd(CommandType::EffectEnabled, 0)) == 1);
+    CHECK(out.count(cmd(CommandType::Effect, int(EffectType::Reverb))) == 0);  // unchanged: not re-sent
+    pc.handleControl(ControlType::InstrumentSelect, violin);  // Violin: Reverb on again
+    CHECK(pc.performance().effectEnabled() && out.count(cmd(CommandType::EffectEnabled, 1)) == 1);
     // EffectSelect cycles from the preset's effect, not a stale one.
     pc.handleControl(ControlType::EffectSelect, 0);
-    CHECK(pc.performance().effect() == EffectType::Reverb);
-    // A preset can start with its effect off (basses).
-    pc.handleControl(ControlType::BankUp, 0);
-    pc.handleControl(ControlType::BankUp, 0);
-    pc.handleControl(ControlType::InstrumentSelect, 3);  // SubBass
-    CHECK(!pc.performance().effectEnabled());
+    CHECK(pc.performance().effect() == EffectType::Delay);
   }
   // --- Volume reaches the synth at full resolution.
   {
@@ -95,7 +94,7 @@ int main() {
     SynthEventSink sink(synth); Rec m;
     OutputRouter router(sink, m, OutputMode::SynthOnly);
     PerformanceController pc(router, gCues, log); pc.begin();
-    pc.handleControl(ControlType::InstrumentSelect, 4);  // Accordion: sustained
+    pc.handleControl(ControlType::InstrumentSelect, findPreset("Violin"));  // sustained, Reverb on
     pc.handleControl(ControlType::SustainToggle, 0);
     pc.handleKey(12, true); for (int b = 0; b < 20; ++b) synth.renderFrames(64);
     pc.handleKey(12, false); for (int b = 0; b < 20; ++b) synth.renderFrames(64);
@@ -119,12 +118,12 @@ int main() {
     CHECK(out.indexOf("off48") < out.indexOf("on60"));  // old note ended before the new one
     CHECK(out.count("on60") == 1 && out.count("off60") == 1);
   }
-  // --- Choosing a rhythm recalls its usual tempo (Ballad = 72 BPM).
+  // --- Choosing a rhythm recalls its usual tempo (Slow Rock = 66 BPM).
   {
     Rec out; PerformanceController pc(out, gCues, log); pc.begin(); out.log.clear();
-    pc.handleControl(ControlType::RhythmSelect, 2);
-    CHECK(pc.performance().tempoBpm() == 72);
-    CHECK(out.count(cmd(CommandType::Tempo, 72)) == 1);
+    pc.handleControl(ControlType::RhythmSelect, findPattern("SlowRock"));
+    CHECK(pc.performance().tempoBpm() == 66);
+    CHECK(out.count(cmd(CommandType::Tempo, 66)) == 1);
   }
   // --- Volume steps in 3 dB, reaches silence, comes back, and stops at full.
   {
@@ -147,18 +146,15 @@ int main() {
     pc.handleControl(ControlType::OctaveDown, 0); CHECK(gCues.last() == "Down");
     pc.handleControl(ControlType::OctaveDown, 0); CHECK(gCues.last() == "Down");
     pc.handleControl(ControlType::OctaveDown, 0); CHECK(gCues.last() == "Limit");  // -2 is the floor
-    pc.handleControl(ControlType::BankUp, 0);     CHECK(gCues.last() == "Count2");
-    pc.handleControl(ControlType::BankUp, 0);     CHECK(gCues.last() == "Count3");
-    pc.handleControl(ControlType::BankUp, 0);     CHECK(gCues.last() == "Limit");
     pc.handleControl(ControlType::SustainToggle, 0); CHECK(gCues.last() == "Up");
     pc.handleControl(ControlType::SustainToggle, 0); CHECK(gCues.last() == "Down");
     pc.toggleFeedback(); CHECK(gCues.last() == "Disabled");
     pc.toggleFeedback(); CHECK(gCues.last() == "Enabled");
   }
-  // --- Effect Select also switches the effect on (JazzOrg starts with it off).
+  // --- Effect Select also switches the effect on (Organ starts with it off).
   {
     Rec out; PerformanceController pc(out, gCues, log); pc.begin();
-    pc.handleControl(ControlType::InstrumentSelect, 2);  // JazzOrg
+    pc.handleControl(ControlType::InstrumentSelect, findPreset("Organ"));
     CHECK(!pc.performance().effectEnabled());
     out.log.clear();
     pc.handleControl(ControlType::EffectSelect, 0);
@@ -178,18 +174,21 @@ int main() {
   {
     Rec out; PerformanceController pc(out, gCues, log); pc.begin();
     pc.handleControl(ControlType::RhythmStartStop, 0);
-    pc.handleControl(ControlType::TempoUp, 0);           // 105
-    pc.handleControl(ControlType::RhythmSelect, 2);       // Ballad (72) while playing
-    CHECK(pc.performance().tempoBpm() == 105);
+    const int tempo = pc.performance().tempoBpm() + 5;
+    pc.handleControl(ControlType::TempoUp, 0);
+    pc.handleControl(ControlType::RhythmSelect, findPattern("SlowRock"));  // while playing
+    CHECK(pc.performance().tempoBpm() == tempo);
     pc.handleControl(ControlType::RhythmStartStop, 0);    // stop
-    pc.handleControl(ControlType::RhythmSelect, 3);       // Disco while stopped
+    pc.handleControl(ControlType::RhythmSelect, findPattern("Disco"));     // while stopped
     CHECK(pc.performance().tempoBpm() == 120);
   }
   // --- Fill, Intro/Ending, Sync Start.
   {
     Rec out; PerformanceController pc(out, gCues, log); pc.begin(); out.log.clear();
-    pc.handleControl(ControlType::RhythmFill, 0);
-    CHECK(gCues.last() == "Limit" && out.log.empty());   // nothing to fill while stopped
+    pc.handleControl(ControlType::RhythmFill, 0);        // stopped: arms sync start
+    CHECK(pc.performance().syncStartArmed() && gCues.last() == "Up" && out.log.empty());
+    pc.handleControl(ControlType::RhythmFill, 0);        // and disarms it
+    CHECK(!pc.performance().syncStartArmed() && gCues.last() == "Down");
     pc.handleControl(ControlType::IntroEnding, 0);
     CHECK(pc.performance().rhythmPlaying() && out.count(cmd(CommandType::RhythmPlaying, kRhythmStartWithIntro)) == 1);
     pc.handleControl(ControlType::RhythmFill, 0);
@@ -198,7 +197,7 @@ int main() {
     CHECK(!pc.performance().rhythmPlaying() && out.count(cmd(CommandType::RhythmPlaying, kRhythmStopWithEnding)) == 1);
 
     out.log.clear();
-    pc.handleControl(ControlType::SyncStart, 0);
+    pc.handleControl(ControlType::RhythmFill, 0);        // stopped: arm sync start
     CHECK(pc.performance().syncStartArmed() && gCues.last() == "Up" && out.log.empty());
     pc.handleKey(5, true);                                // first key starts the rhythm, before the note
     CHECK(pc.performance().rhythmPlaying() && !pc.performance().syncStartArmed());
@@ -207,15 +206,17 @@ int main() {
     pc.handleKey(7, true);                                // later keys don't restart it
     CHECK(out.count(cmd(CommandType::RhythmPlaying, kRhythmStart)) == 1);
   }
-  // --- Leslie speed: only on organ presets.
+  // --- Leslie speed: pressing the organ's button again; other presets just reload.
   {
     Rec out; PerformanceController pc(out, gCues, log); pc.begin(); out.log.clear();
-    pc.handleControl(ControlType::LeslieSpeed, 0);        // GrandPno: no rotary
-    CHECK(gCues.last() == "Limit" && out.log.empty());
-    pc.handleControl(ControlType::InstrumentSelect, 2);   // JazzOrg
-    pc.handleControl(ControlType::LeslieSpeed, 0);
+    const uint8_t piano = findPreset("Piano"), organ = findPreset("Organ");
+    pc.handleControl(ControlType::InstrumentSelect, piano);   // Piano again: no rotary
+    CHECK(!pc.performance().rotaryFast() && out.count(cmd(CommandType::RotaryFast, 1)) == 0);
+    pc.handleControl(ControlType::InstrumentSelect, organ);   // choose the organ
+    CHECK(!pc.performance().rotaryFast());
+    pc.handleControl(ControlType::InstrumentSelect, organ);   // organ again: fast
     CHECK(pc.performance().rotaryFast() && out.count(cmd(CommandType::RotaryFast, 1)) == 1 && gCues.last() == "Up");
-    pc.handleControl(ControlType::LeslieSpeed, 0);
+    pc.handleControl(ControlType::InstrumentSelect, organ);   // and slow
     CHECK(!pc.performance().rotaryFast() && gCues.last() == "Down");
   }
   // --- Hold: Tempo/Volume/Transpose repeat after 0.5 s every 0.1 s; Panic long press fires once at 2 s.

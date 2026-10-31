@@ -1,5 +1,6 @@
 // SynthEngine behaviour: chunked rendering, rotary speaker speed, voice stealing.
 #include "Presets.h"
+#include "catalog.h"
 #include "RhythmPatterns.h"
 #include "SynthEngine.h"
 #include "check.h"
@@ -27,7 +28,7 @@ static void chunkedRenderMatches() {
   SynthEngine ea(a, gFeedback), eb(b, gFeedback);
   for (SynthEngine *e : {&ea, &eb}) {
     e->begin();
-    e->setPreset(4);
+    e->setPreset(findPreset("Violin"));
     e->setEffect(EffectType::Reverb);
     e->setEffectEnabled(true);
     e->noteOn(60);
@@ -78,11 +79,11 @@ static double measuredRotaryHz(uint8_t preset, bool fast) {
 }
 
 static void rotarySpinsAtPresetSpeed() {
-  CHECK(fabs(measuredRotaryHz(2, false) - 0.8) < 0.2);  // JazzOrg: Leslie slow ("chorale")
-  CHECK(fabs(measuredRotaryHz(2, true) - 6.7) < 0.5);   // and fast ("tremolo")
+  CHECK(fabs(measuredRotaryHz(findPreset("Organ"), false) - 0.8) < 0.2);  // Leslie slow ("chorale")
+  CHECK(fabs(measuredRotaryHz(findPreset("Organ"), true) - 6.7) < 0.5);   // and fast ("tremolo")
 }
 
-// Frequency of the strongest spectral peak over one second of a held note.
+// Pitch of a held note by autocorrelation (works for harmonic sounds).
 static double measuredPitchHz(uint8_t preset, uint8_t note) {
   Capture out;
   SynthEngine engine(out, gFeedback);
@@ -91,15 +92,29 @@ static double measuredPitchHz(uint8_t preset, uint8_t note) {
   engine.setEffectEnabled(false);
   engine.noteOn(note);
   render(engine, 44100 / 64);
-  int crossings = 0;
-  for (size_t i = 22050 + 1; i < out.left.size(); ++i) crossings += (out.left[i - 1] < 0) != (out.left[i] < 0);
-  return crossings / 2.0 / ((out.left.size() - 22050) / 44100.0);
+  const size_t start = 22050, window = 4096;
+  double best = -1;
+  int bestLag = 0;
+  for (int lag = 20; lag < 1000; ++lag) {
+    double sum = 0, norm = 1e-9;
+    for (size_t i = 0; i < window; ++i) {
+      sum += double(out.left[start + i]) * out.left[start + i + lag];
+      norm += double(out.left[start + i + lag]) * out.left[start + i + lag];
+    }
+    const double score = sum / sqrt(norm);
+    if (score > best * 1.02) {  // prefer the shortest lag among near-equal peaks
+      best = score;
+      bestLag = lag;
+    }
+  }
+  return 44100.0 / bestLag;
 }
 
 // MIDI note numbers match pitch (A4 = 69 = 440 Hz); the preset octave shifts it.
 static void notesPlayAtMidiPitch() {
-  CHECK(fabs(measuredPitchHz(19, 72) - 261.63) < 2.0);  // SubBass (octave -1): key C5 sounds C4
-  CHECK(fabs(measuredPitchHz(19, 81) - 440.0) < 2.0);   // key A5 sounds A4
+  CHECK(fabs(measuredPitchHz(findPreset("Organ"), 69) - 440.0) < 8.0);
+  CHECK(fabs(measuredPitchHz(findPreset("Organ"), 57) - 220.0) < 4.0);
+  CHECK(fabs(measuredPitchHz(findPreset("MusicBox"), 57) - 440.0) < 8.0);  // octave +1
 }
 
 // Volume 0 is silent for every preset, including the organ's rotary speaker.
@@ -144,7 +159,7 @@ static void stealsOldestNote() {
   Capture out;
   SynthEngine engine(out, gFeedback);
   engine.begin();
-  engine.setPreset(19);  // SubBass: sustained, no effect tail
+  engine.setPreset(findPreset("Organ"));  // sustained, no effect tail
   engine.setEffectEnabled(false);
   for (uint8_t i = 0; i < config::kPolyphony; ++i) engine.noteOn(40 + i);  // notes 40..47
   engine.noteOn(60);  // steals note 40
@@ -209,7 +224,7 @@ static void drumsStayDry() {
     engine.setEffect(presets::at(preset).defaultEffect);
     engine.setEffectEnabled(effectOn);
     engine.setTempoBpm(112);
-    engine.setRhythmPattern(1);
+    engine.setRhythmPattern(findPattern("Rock"));
     engine.startRhythm(false);
     render(engine, 44100 * 3 / 64);
     return out.left;
@@ -228,8 +243,9 @@ static void drumsStayDry() {
 // Chords played along with the busiest patterns stay (almost) below the soft
 // clipper at the default volume, so the drums don't distort the chord.
 static void chordsWithDrumsHaveHeadroom() {
-  for (uint8_t preset : {0, 2, 10, 14}) {
-    for (uint8_t pattern : {1, 3, 7}) {
+  for (const char *presetName : {"Piano", "Organ", "Violin", "Trumpet"}) {
+    for (const char *patternName : {"Rock", "Disco", "March"}) {
+      const uint8_t preset = findPreset(presetName), pattern = findPattern(patternName);
       Capture out;
       SynthEngine engine(out, gFeedback);
       engine.begin();

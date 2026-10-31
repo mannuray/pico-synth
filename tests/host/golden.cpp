@@ -55,7 +55,7 @@ static void runCase(int preset, int effect, bool rhythm) {
 }
 
 int main() {
-  for (int preset = 0; preset < 24; ++preset) {
+  for (int preset = 0; preset < config::kPresetCount; ++preset) {
     for (int effect = -1; effect < 6; ++effect) runCase(preset, effect, false);
     runCase(preset, -1, true);
   }

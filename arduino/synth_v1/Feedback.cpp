@@ -1,4 +1,5 @@
 #include "Feedback.h"
+#include "AudioHot.h"
 #include "Config.h"
 #include "Oscillator.h"
 
@@ -72,7 +73,7 @@ void FeedbackSounds::startTone() {
   position_ = 0;
 }
 
-int32_t FeedbackSounds::renderSample() {
+int32_t AUDIO_HOT(FeedbackSounds::renderSample)() {
   if (toneCount_ == 0) {
     return 0;
   }

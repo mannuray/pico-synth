@@ -1,5 +1,6 @@
 #include "AppController.h"
 #include "ArduinoPlatform.h"
+#include "Core1Worker.h"
 #include "Feedback.h"
 #include "I2SAudioOutput.h"
 #include <MIDIUSB.h>
@@ -17,7 +18,8 @@ MatrixScanner matrixScanner;
 MicInput micInput;
 I2SAudioOutput audioOutput;
 FeedbackSounds feedback;
-SynthEngine synth(audioOutput, feedback);
+Core1Worker core1Worker;
+SynthEngine synth(audioOutput, feedback, core1Worker);  // half the voices render on core 1
 SynthEventSink synthSink(synth);
 MidiEventSink midiSink;
 OutputRouter router(synthSink, midiSink, OutputMode::SynthOnly);
@@ -53,4 +55,11 @@ void setup() {
 
 void loop() {
   app.tick();
+}
+
+// Core 1 renders half of the voices for each audio block, on request.
+void setup1() {}
+
+void loop1() {
+  core1Worker.serviceFromCore1();
 }

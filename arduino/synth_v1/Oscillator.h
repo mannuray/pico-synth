@@ -1,19 +1,22 @@
 #pragma once
 
+#include "AudioHot.h"
 #include "Config.h"
 #include "Dsp.h"
 #include "SynthTypes.h"
 
 // Waveform generation. sample() is inline because it runs several times per
-// voice per audio sample. The tables live in Oscillator.cpp, the only file that
-// includes the generated WaveTableData.h, so flash holds one copy.
+// voice per audio sample. The tables are copied from flash (Oscillator.cpp, the
+// only file that includes the generated WaveTableData.h) into RAM at startup,
+// so lookups never wait on the flash cache.
 namespace osc {
 
 constexpr uint8_t kTableCount = 14;  // checked against WaveTableData.h in Oscillator.cpp
 constexpr uint8_t kFrameCount = 4;
 
-extern const int16_t (&kSine)[512];
-extern const int16_t *const (&kWaveTables)[kTableCount][kFrameCount];
+constexpr size_t kTableSize = 512;
+extern int16_t kSine[kTableSize];
+extern int16_t kWaveTables[kTableCount][kFrameCount][kTableSize];
 
 // MIDI note -> phase increment per sample (32-bit phase).
 uint32_t noteToPhaseStep(uint8_t midiNote);
@@ -40,13 +43,13 @@ inline int32_t polyBlepQ16(uint32_t phase, uint32_t phaseStep) {
   return 0;
 }
 
-inline int16_t sine(uint32_t phase) {
+inline int16_t AUDIO_HOT(sine)(uint32_t phase) {
   return dsp::interpolateTable(kSine, phase);
 }
 
 // phaseStep > 0 enables anti-aliasing for Saw/Square. framePos (0..32767)
 // crossfades wavetable frames from bright (frame 0) to dark (last frame).
-inline int16_t sample(Waveform waveform, uint32_t phase, uint8_t wavetableIndex = 0, uint32_t phaseStep = 0, int32_t framePos = 0) {
+inline int16_t AUDIO_HOT(sample)(Waveform waveform, uint32_t phase, uint8_t wavetableIndex = 0, uint32_t phaseStep = 0, int32_t framePos = 0) {
   switch (waveform) {
     case Waveform::Triangle:
       return dsp::triangle(phase);

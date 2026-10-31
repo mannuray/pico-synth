@@ -1,4 +1,5 @@
 #include "Voice.h"
+#include "AudioHot.h"
 #include "Oscillator.h"
 
 namespace {
@@ -75,38 +76,57 @@ void Voice::start(uint8_t keyNote, const Preset &preset, int16_t stereoPan, bool
   stage_ = Stage::Attack;
 }
 
-int32_t Voice::render(const Preset &preset, const VoiceShape &shape, const VoiceModulation &modulation, dsp::NoiseSource &noise) {
+size_t AUDIO_HOT(Voice::renderBlock)(const Preset &preset, const VoiceShape &shape, const VoiceModulation *modulation,
+                                     size_t frames, int32_t *left, int32_t *right, dsp::NoiseSource &noise) {
   if (!active_) {
     return 0;
   }
-  advanceEnvelope(shape);
-  if (!active_) {
-    return 0;
-  }
+  // Pan: -256..+256 maps the voice between the left and right outputs.
+  const int32_t panRight = 256 + stereoPan_;  // 0..512
+  const int32_t panLeft = 512 - panRight;
 
-  const int32_t modLevel15 = advanceSpectralEnvelope();
-  int32_t sample = oscillate(preset, currentPhaseStep(modulation), modLevel15);
-  sample += organSounds(noise);
-  if (modulation.gainQ8 != 256) {
-    sample = (sample * modulation.gainQ8) >> 8;
-  }
+  for (size_t start = 0; start < frames; start += kControlInterval) {
+    const size_t end = min<size_t>(start + kControlInterval, frames);
+    const uint32_t samples = static_cast<uint32_t>(end - start);
 
-  const int32_t filtered = filter_.process(sample, filterCutoff(preset, shape, modLevel15), shape.resonanceDamping);
-  const int32_t out = (filtered * (level_ >> 15)) >> 15;
-  return (out * preset.gain) >> 7;
+    // Control rate: once per kControlInterval samples.
+    const VoiceModulation &mod = modulation[start];
+    const int32_t modLevel15 = advanceSpectralEnvelope(samples);
+    const uint32_t phaseStep = currentPhaseStep(mod, samples);
+    const int32_t cutoff = filterCutoff(preset, shape, modLevel15);
+
+    for (size_t i = start; i < end; ++i) {
+      advanceEnvelope(shape);
+      if (!active_) {
+        return i;
+      }
+      int32_t sample = oscillate(preset, phaseStep, modLevel15);
+      sample += organSounds(noise);
+      if (mod.gainQ8 != 256) {
+        sample = (sample * mod.gainQ8) >> 8;
+      }
+      const int32_t filtered = filter_.process(sample, cutoff, shape.resonanceDamping);
+      const int32_t out = (((filtered * (level_ >> 15)) >> 15) * preset.gain) >> 7;
+      left[i] += (out * panLeft) >> 9;
+      right[i] += (out * panRight) >> 9;
+    }
+  }
+  return frames;
 }
 
-// Moves the spectral envelope toward its sustain level; returns it as Q15.
-int32_t Voice::advanceSpectralEnvelope() {
+// Moves the spectral envelope toward its sustain level over `samples` samples;
+// returns it as Q15.
+int32_t AUDIO_HOT(Voice::advanceSpectralEnvelope)(uint32_t samples) {
   if (modDecayRate_ > 0 && modLevel_ > modSustain_) {
-    modLevel_ -= max<int32_t>(1, scaleByRate(modLevel_ - modSustain_, modDecayRate_));
+    const uint32_t rate = min<uint32_t>(modDecayRate_ * samples, 1u << 20);
+    modLevel_ -= max<int32_t>(1, scaleByRate(modLevel_ - modSustain_, rate));
   }
   return modLevel_ >> 15;
 }
 
 // Organ key click (noise burst at note onset) and percussion (a decaying sine
 // at the 2nd or 3rd harmonic). Zero for non-organ presets.
-int32_t Voice::organSounds(dsp::NoiseSource &noise) {
+int32_t AUDIO_HOT(Voice::organSounds)(dsp::NoiseSource &noise) {
   int32_t sample = 0;
   if (clickLevel_ > 0) {
     const int16_t noiseVal = static_cast<int16_t>(noise.next() >> 16);
@@ -124,14 +144,14 @@ int32_t Voice::organSounds(dsp::NoiseSource &noise) {
 
 // The cutoff follows the amplitude envelope, the spectral envelope and the
 // note (+1 per 4 semitones above C3).
-int32_t Voice::filterCutoff(const Preset &preset, const VoiceShape &shape, int32_t modLevel15) const {
+int32_t AUDIO_HOT(Voice::filterCutoff)(const Preset &preset, const VoiceShape &shape, int32_t modLevel15) const {
   const int32_t envAmount = ((level_ >> 15) * shape.filterEnvDepth) >> 15;
   const int32_t spectralEnv = (modLevel15 * preset.modulationDepth) >> 15;
   const int32_t noteBrightness = (static_cast<int32_t>(keyNote_) - 48) >> 2;
   return constrain(shape.baseCutoff + (envAmount >> 1) + spectralEnv + noteBrightness, 10, 230);
 }
 
-void Voice::advanceEnvelope(const VoiceShape &shape) {
+void AUDIO_HOT(Voice::advanceEnvelope)(const VoiceShape &shape) {
   switch (stage_) {
     case Stage::Attack:
       level_ += max<int32_t>(1, scaleByRate(kEnvelopeFull - level_, shape.attackRate));
@@ -169,14 +189,14 @@ void Voice::advanceEnvelope(const VoiceShape &shape) {
   }
 }
 
-uint32_t Voice::currentPhaseStep(const VoiceModulation &modulation) {
+uint32_t AUDIO_HOT(Voice::currentPhaseStep)(const VoiceModulation &modulation, uint32_t samples) {
   uint32_t phaseStep = phaseStep_;
 
   // Built-in vibrato, depth in cents, fading in over the vibrato delay.
   if (vibratoStep_ > 0) {
-    vibratoPhase_ += vibratoStep_;
+    vibratoPhase_ += vibratoStep_ * samples;
     if (vibratoFade_ < 32767) {
-      vibratoFade_ = min<int32_t>(32767, vibratoFade_ + vibratoFadeStep_);
+      vibratoFade_ = min<int32_t>(32767, vibratoFade_ + vibratoFadeStep_ * static_cast<int32_t>(samples));
     }
     const int32_t wobble = (osc::sine(vibratoPhase_) * vibratoFade_) >> 15;
     // wobble * depth / 32768, split so each product fits in 32 bits.
@@ -190,7 +210,7 @@ uint32_t Voice::currentPhaseStep(const VoiceModulation &modulation) {
   return phaseStep;
 }
 
-int32_t Voice::oscillate(const Preset &preset, uint32_t phaseStep, int32_t modLevel15) {
+int32_t AUDIO_HOT(Voice::oscillate)(const Preset &preset, uint32_t phaseStep, int32_t modLevel15) {
   // Wavetables move from the bright first frame toward the dark last frame
   // as the spectral envelope falls; with no spectral decay they stay bright.
   const int32_t framePos = modDecayRate_ > 0 ? (32767 - modLevel15) : 0;

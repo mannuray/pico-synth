@@ -1,4 +1,5 @@
 #include "SynthEngine.h"
+#include "AudioHot.h"
 #include "Oscillator.h"
 #include "Presets.h"
 
@@ -9,13 +10,18 @@ constexpr uint32_t kLfoPhaseStep = static_cast<uint32_t>((5.0 * 4294967296.0) / 
 constexpr int16_t kStereoPan[8] = {-80, 80, -160, 160, -40, 40, -120, 120};
 }  // namespace
 
-SynthEngine::SynthEngine(AudioOutput &audioOutput, FeedbackSounds &feedback)
-    : audioOutput_(audioOutput), feedback_(feedback) {}
+InlineWorker SynthEngine::inlineWorker_;
+
+SynthEngine::SynthEngine(AudioOutput &audioOutput, FeedbackSounds &feedback, IParallelWorker &worker)
+    : audioOutput_(audioOutput), feedback_(feedback), worker_(worker) {
+  voiceNoise_[1].seed = 0x9e3779b9u;  // independent noise for the second half
+}
 
 bool SynthEngine::begin() {
   rhythm_.begin(config::kSampleRate);
   rhythm_.setBpm(tempoBpm_);
-  rotary_.configure(presets::at(presetIndex_).organ);
+  preset_ = presets::at(presetIndex_);
+  rotary_.configure(preset_.organ);
   updateShape();
   return audioOutput_.begin(config::kSampleRate, config::kBitsPerSample);
 }
@@ -29,7 +35,7 @@ void SynthEngine::noteOn(uint8_t midiNote) {
   for (const Voice &other : voices_) {
     otherKeyHeld = otherKeyHeld || (&other != &voice && other.active() && !other.releasing());
   }
-  voice.start(midiNote, presets::at(presetIndex_), kStereoPan[voiceIndex & 7], !otherKeyHeld, noise_);
+  voice.start(midiNote, preset_, kStereoPan[voiceIndex & 7], !otherKeyHeld, noise_);
 }
 
 // Sustain is applied upstream: note-offs for sustained keys arrive when it's released.
@@ -49,7 +55,8 @@ void SynthEngine::allNotesOff() {
 
 void SynthEngine::setPreset(uint8_t presetIndex) {
   presetIndex_ = presetIndex % config::kPresetCount;
-  rotary_.configure(presets::at(presetIndex_).organ);
+  preset_ = presets::at(presetIndex_);
+  rotary_.configure(preset_.organ);
   updateShape();
 }
 
@@ -118,7 +125,7 @@ Voice &SynthEngine::allocateVoice() {
 }
 
 void SynthEngine::updateShape() {
-  shape_ = computeVoiceShape(presets::at(presetIndex_));
+  shape_ = computeVoiceShape(preset_);
 }
 
 // Renders in blocks of at most kAudioBlockFrames, the size of the scratch buffers.
@@ -132,77 +139,94 @@ void SynthEngine::renderFrames(size_t frameCount) {
   lastProcessingUs_ = processingUs;
 }
 
+// Renders one half of the voices (0 = voices 0-3, 1 = voices 4-7) for the
+// current block into voiceMix_[half].
+void AUDIO_HOT(SynthEngine::renderVoiceHalf)(uint8_t half) {
+  VoiceMix &mix = voiceMix_[half];
+  memset(&mix, 0, sizeof(mix));
+  for (uint8_t v = half * kVoicesPerHalf; v < (half + 1) * kVoicesPerHalf; ++v) {
+    const size_t sounded = voices_[v].renderBlock(preset_, shape_, modulation_, blockFrames_,
+                                                  mix.left, mix.right, voiceNoise_[half]);
+    for (size_t i = 0; i < sounded; ++i) {
+      ++mix.activeCount[i];
+    }
+  }
+}
+
+void AUDIO_HOT(SynthEngine::renderSecondHalf)(void *engine) {
+  static_cast<SynthEngine *>(engine)->renderVoiceHalf(1);
+}
+
 // Returns the time spent computing the block, excluding the output write.
-uint32_t SynthEngine::renderBlock(size_t frameCount) {
-  const Preset &preset = presets::at(presetIndex_);
+uint32_t AUDIO_HOT(SynthEngine::renderBlock)(size_t frameCount) {
   AudioEffect &effect = effects_.active();
-  const bool needsLfo = effect.usesLfo();
-
   const uint32_t startUs = micros();
-
-  EffectContext ctx{0, 0, osc::kSine};
 
   // Feedback blips follow the volume, but stay audible near volume 0.
   const int32_t feedbackLevel = max<int32_t>(masterVolume_, 8192);
 
-  for (size_t i = 0; i < frameCount; ++i) {
-    const int32_t feedbackSample = (feedback_.renderSample() * feedbackLevel) >> 15;
-    if (musicMuted_) {
+  if (musicMuted_) {
+    for (size_t i = 0; i < frameCount; ++i) {
+      const int32_t feedbackSample = (feedback_.renderSample() * feedbackLevel) >> 15;
       blockL_[i] = dsp::softClip(feedbackSample);
       blockR_[i] = dsp::softClip(feedbackSample);
-      continue;
+    }
+  } else {
+    // Pass 1: the effect's LFO and per-voice modulation for each frame.
+    const bool needsLfo = effect.usesLfo();
+    for (size_t i = 0; i < frameCount; ++i) {
+      int32_t lfo = 0;
+      if (needsLfo) {
+        lfoPhase_ += kLfoPhaseStep;
+        lfo = dsp::triangle(lfoPhase_);
+      }
+      lfoPhases_[i] = lfoPhase_;
+      lfoValues_[i] = lfo;
+      modulation_[i] = effect.voiceModulation(EffectContext{lfoPhase_, lfo, osc::kSine});
     }
 
-    ctx.lfo = 0;
-    if (needsLfo) {
-      lfoPhase_ += kLfoPhaseStep;
-      ctx.lfo = dsp::triangle(lfoPhase_);
+    // Pass 2: voices, half on the worker (second core), half here.
+    blockFrames_ = frameCount;
+    worker_.start(&SynthEngine::renderSecondHalf, this);
+    renderVoiceHalf(0);
+    worker_.wait();
+
+    // Pass 3: mix, effect, rotary speaker, drums, feedback, output.
+    for (size_t i = 0; i < frameCount; ++i) {
+      int32_t tonalMixL = voiceMix_[0].left[i] + voiceMix_[1].left[i];
+      int32_t tonalMixR = voiceMix_[0].right[i] + voiceMix_[1].right[i];
+      const uint8_t activeVoiceCount = voiceMix_[0].activeCount[i] + voiceMix_[1].activeCount[i];
+      if (activeVoiceCount > 1) {
+        tonalMixL = (tonalMixL * 3) / (activeVoiceCount + 2);
+        tonalMixR = (tonalMixR * 3) / (activeVoiceCount + 2);
+      }
+
+      // Clamp so the volume multiply stays within 32 bits.
+      const int32_t mixL = constrain(tonalMixL, -65535, 65535);
+      const int32_t mixR = constrain(tonalMixR, -65535, 65535);
+      int32_t left = (mixL * masterVolume_) >> 15;
+      int32_t right = (mixR * masterVolume_) >> 15;
+
+      EffectContext ctx{lfoPhases_[i], lfoValues_[i], osc::kSine};
+      effect.process(left, right, ctx);
+      if (rotary_.enabled()) {
+        rotary_.process(left, right);
+      }
+
+      // Drums join after the effect and the rotary speaker: they stay dry and
+      // sound the same whichever preset is selected.
+      const int32_t drums = (constrain(rhythm_.renderSample(), -65535, 65535) * masterVolume_) >> 15;
+      const int32_t feedbackSample = (feedback_.renderSample() * feedbackLevel) >> 15;
+      left += drums + feedbackSample;
+      right += drums + feedbackSample;
+
+      // Triangular dither (difference of two random bits: -1, 0 or +1) reduces
+      // quantization noise on quiet tails.
+      const uint32_t bits = noise_.next();
+      const int32_t dither = static_cast<int32_t>(bits >> 31) - static_cast<int32_t>((bits >> 30) & 1u);
+      blockL_[i] = dsp::softClip(left + dither);
+      blockR_[i] = dsp::softClip(right + dither);
     }
-    ctx.lfoPhase = lfoPhase_;
-    const VoiceModulation modulation = effect.voiceModulation(ctx);
-
-    int32_t tonalMixL = 0;
-    int32_t tonalMixR = 0;
-    uint8_t activeVoiceCount = 0;
-    for (Voice &voice : voices_) {
-      if (!voice.active()) continue;
-      ++activeVoiceCount;
-      const int32_t voiceSample = voice.render(preset, shape_, modulation, noise_);
-      // Per-voice stereo panning: pan is -256..+256.
-      const int32_t panR = 256 + voice.stereoPan();  // 0..512
-      const int32_t panL = 512 - panR;               // 512..0
-      tonalMixL += (voiceSample * panL) >> 9;
-      tonalMixR += (voiceSample * panR) >> 9;
-    }
-
-    if (activeVoiceCount > 1) {
-      tonalMixL = (tonalMixL * 3) / (activeVoiceCount + 2);
-      tonalMixR = (tonalMixR * 3) / (activeVoiceCount + 2);
-    }
-
-    // Clamp so the volume multiply stays within 32 bits.
-    const int32_t mixL = constrain(tonalMixL, -65535, 65535);
-    const int32_t mixR = constrain(tonalMixR, -65535, 65535);
-    int32_t left = (mixL * masterVolume_) >> 15;
-    int32_t right = (mixR * masterVolume_) >> 15;
-
-    effect.process(left, right, ctx);
-    if (rotary_.enabled()) {
-      rotary_.process(left, right);
-    }
-
-    // Drums join after the effect and the rotary speaker: they stay dry and
-    // sound the same whichever preset is selected.
-    const int32_t drums = (constrain(rhythm_.renderSample(), -65535, 65535) * masterVolume_) >> 15;
-    left += drums + feedbackSample;
-    right += drums + feedbackSample;
-
-    // Triangular dither (difference of two random bits: -1, 0 or +1) reduces
-    // quantization noise on quiet tails.
-    const uint32_t bits = noise_.next();
-    const int32_t dither = static_cast<int32_t>(bits >> 31) - static_cast<int32_t>((bits >> 30) & 1u);
-    blockL_[i] = dsp::softClip(left + dither);
-    blockR_[i] = dsp::softClip(right + dither);
   }
 
   const uint32_t processingUs = micros() - startUs;

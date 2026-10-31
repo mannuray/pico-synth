@@ -1,4 +1,5 @@
 #include "RhythmEngine.h"
+#include "AudioHot.h"
 #include "DrumSamples.h"
 
 #include <initializer_list>
@@ -306,7 +307,7 @@ void RhythmEngine::hit(uint8_t voiceIndex, uint8_t sampleId, char velocity, int3
   voice.queuedDelay = static_cast<uint16_t>(delay + (noiseLfsr_ & 0x3F));
 }
 
-int32_t RhythmEngine::renderSample() {
+int32_t AUDIO_HOT(RhythmEngine::renderSample)() {
   if (playing_) {
     if (samplesUntilNextStep_ == 0 && currentStep_ % currentPatternDef().stepsPerBar == 0) {
       onBarLine();

@@ -5,8 +5,8 @@ Main firmware for the Pico Synth. See the [project README](../../README.md) for 
 ## Quick Build
 
 ```bash
-arduino-cli compile -b rp2040:rp2040:rpipico arduino/synth_v1
-arduino-cli upload -b rp2040:rp2040:rpipico -p /dev/cu.usbmodem2101 arduino/synth_v1
+arduino-cli compile -b rp2040:rp2040:rpipico:opt=Optimize2 arduino/synth_v1
+arduino-cli upload -b rp2040:rp2040:rpipico:opt=Optimize2 -p /dev/cu.usbmodem2101 arduino/synth_v1
 ```
 
 ## File Overview
@@ -31,6 +31,9 @@ arduino-cli upload -b rp2040:rp2040:rpipico -p /dev/cu.usbmodem2101 arduino/synt
 | RotarySpeaker.h/cpp | Leslie-style rotary speaker for the organ presets |
 | Effects.h/cpp, EffectTypes.h | Master effects (one class each), the effect rack, and the data they share with voices |
 | Dsp.h | Shared fixed-point helpers (table lookup, triangle, soft clip, noise) |
+| AudioHot.h | `AUDIO_HOT(...)`: runs per-sample functions from RAM on the RP2040 |
+| IParallelWorker.h, Core1Worker.h/cpp | Renders half the voices on the RP2040's second core |
+| sketch.yaml | Default board and `-O2` build setting |
 | SynthTypes.h | Waveform, EffectType, Preset types |
 | Presets.h/cpp | Preset table |
 | RhythmEngine.h/cpp, RhythmPatterns.h | Drum pattern sequencer and pattern table |

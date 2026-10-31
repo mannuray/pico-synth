@@ -147,15 +147,27 @@ ChurchOrg is a pipe organ: no click, percussion or rotary, just slow pipe speech
 
 The I2S output queue is `kI2SBufferCount` x `kI2SBufferFrames` = 6 x 64 stereo frames, about 8.7 ms from key press to sound (it was 8 x 256, about 46 ms). The main loop has to refill a 64-frame buffer every ~1.45 ms; if the audio ever crackles, raise the buffer count in `Config.h`.
 
-## Performance Optimizations
+## Performance
 
-- All wavetable + sine data in flash (zero RAM)
-- Precomputed phase steps for LFO and rotary (no float in inner loop)
-- All divisions replaced with bit shifts in the hot path
-- Precomputed filter constants (baseCutoff, resonanceDamping) in recomputeEnvelope
-- Inactive voices skipped before function call
-- Conditional subtraction for reverb index wrapping (avoids modulo on non-power-of-2 sizes)
-- Bitwise AND for power-of-2 buffer wrapping (delay, chorus)
+The audio budget is 1.45 ms per 64-sample block (about 4,500 CPU cycles per sample at 200 MHz). Measured on the Pico (200 MHz, `-O2`), with all 8 voices sounding, drums playing and the preset's effect on:
+
+| Presets | CPU |
+|---|---|
+| Basses, Pluck, WahClav, Chiptune, RingMod | 52-58% |
+| JazzOrg, EPiano, Bells | 63-72% |
+| GrandPno, NylonGtr, Violin, Cello, Flute, Clarinet, Trumpet, Harmonica | 77-79% |
+| Unison presets: ChurchOrg, Accordion, Strings, Choir, SpacePad | 98-101% |
+| Brass | 112% |
+
+(The original engine needed 100-235% for the same test.) This is the worst case; typical 3-5 note playing is well below it. What keeps it there:
+
+- **Both cores**: voices 4-7 render on core 1 (`Core1Worker`) while core 0 renders voices 0-3, then core 0 mixes and runs the effects, drums and output.
+- **Block rendering at a control rate**: each voice renders a whole block; filter cutoff, spectral envelope, vibrato and effect modulation update every 8 samples (0.18 ms), the amplitude envelope every sample.
+- **RAM**: the per-sample functions (`AUDIO_HOT`), the sine table and the wavetables run from RAM rather than through the flash cache.
+- **`-O2`** via `sketch.yaml` (the core defaults to `-Os`).
+- Fixed-point throughout; no divisions per voice per sample.
+
+A benchmark sketch that times every preset on the device is a good way to re-check after engine changes; the serial `cpu=` field shows the live load in standalone mode.
 
 ## Rhythm Engine
 
@@ -222,8 +234,8 @@ Device name: "Synth Pico MIDI"
 ## Resource Usage
 
 - Flash: 476 KB (22% of 2 MB); the drum kit is ~330 KB of it
-- RAM: 54 KB (20% of 256 KB); the reverb and delay buffers are ~38 KB of it
-- CPU: last measured at 11% idle, ~19% with 8 voices + reverb, before the 2026 preset rework. Re-measure with the `cpu=` status line.
+- RAM: ~121 KB (46%) with the wavetables copied into RAM
+- CPU: see Performance above
 
 ## Future Work
 

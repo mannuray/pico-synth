@@ -1,4 +1,5 @@
 #include "Effects.h"
+#include "AudioHot.h"
 #include "Dsp.h"
 
 namespace {
@@ -21,19 +22,19 @@ constexpr int32_t kDelayFeedback = 14746;  // 0.45
 constexpr int32_t kDelayMix = 13107;       // 0.40
 }  // namespace
 
-VoiceModulation VibratoEffect::voiceModulation(const EffectContext &ctx) const {
+VoiceModulation AUDIO_HOT(VibratoEffect::voiceModulation)(const EffectContext &ctx) const {
   VoiceModulation mod;
   mod.pitchFracQ16 = (ctx.lfo * kVibratoPitchQ16) >> 15;
   return mod;
 }
 
-VoiceModulation TremoloEffect::voiceModulation(const EffectContext &ctx) const {
+VoiceModulation AUDIO_HOT(TremoloEffect::voiceModulation)(const EffectContext &ctx) const {
   VoiceModulation mod;
   mod.gainQ8 = 205 + ((ctx.lfo * 51) >> 15);  // ~154..256, about +-2.5 dB
   return mod;
 }
 
-VoiceModulation ChorusEffect::voiceModulation(const EffectContext &ctx) const {
+VoiceModulation AUDIO_HOT(ChorusEffect::voiceModulation)(const EffectContext &ctx) const {
   VoiceModulation mod;
   mod.pitchFracQ16 = (ctx.lfo * kChorusPitchQ16) >> 15;
   return mod;
@@ -44,7 +45,7 @@ void ChorusEffect::onSelected() {
   index_ = 0;
 }
 
-void ChorusEffect::process(int32_t &left, int32_t &right, const EffectContext &ctx) {
+void AUDIO_HOT(ChorusEffect::process)(int32_t &left, int32_t &right, const EffectContext &ctx) {
   const int32_t lfoLeft = dsp::interpolateTable(ctx.sineTable, ctx.lfoPhase);
   const int32_t lfoRight = dsp::interpolateTable(ctx.sineTable, ctx.lfoPhase + 0x40000000u);
   const size_t leftDelay = kChorusBaseDelay + (((lfoLeft + 32768) * static_cast<int32_t>(kChorusSweep)) >> 16);
@@ -80,7 +81,7 @@ void ReverbEffect::onSelected() {
   initialize();
 }
 
-int32_t ReverbEffect::processSide(uint8_t side, int32_t input) {
+int32_t AUDIO_HOT(ReverbEffect::processSide)(uint8_t side, int32_t input) {
   int32_t out = 0;
   for (Comb &comb : combs_[side]) {
     const int32_t delayed = comb.buffer[comb.index];
@@ -98,7 +99,7 @@ int32_t ReverbEffect::processSide(uint8_t side, int32_t input) {
   return out;
 }
 
-void ReverbEffect::process(int32_t &left, int32_t &right, const EffectContext &) {
+void AUDIO_HOT(ReverbEffect::process)(int32_t &left, int32_t &right, const EffectContext &) {
   if (!initialized_) {
     initialize();
   }
@@ -114,7 +115,7 @@ void DelayEffect::onSelected() {
   index_ = 0;
 }
 
-void DelayEffect::process(int32_t &left, int32_t &right, const EffectContext &) {
+void AUDIO_HOT(DelayEffect::process)(int32_t &left, int32_t &right, const EffectContext &) {
   const int32_t delayed = buffer_[index_];
   const int32_t mono = (left + right) >> 1;
   buffer_[index_] = saturate16(mono + ((delayed * kDelayFeedback) >> 15));
@@ -130,7 +131,7 @@ void BitcrusherEffect::onSelected() {
   counter_ = 0;
 }
 
-void BitcrusherEffect::process(int32_t &left, int32_t &right, const EffectContext &) {
+void AUDIO_HOT(BitcrusherEffect::process)(int32_t &left, int32_t &right, const EffectContext &) {
   if (counter_++ >= 3) {
     // Keep the top 4 bits of a 16-bit sample (mask, since left-shifting negatives is undefined).
     heldLeft_ = left & ~0xFFF;

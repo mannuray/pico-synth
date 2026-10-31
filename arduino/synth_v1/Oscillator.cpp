@@ -29,8 +29,22 @@ constexpr uint32_t kMidiToPhaseStepLut[128] = {
 
 namespace osc {
 
-const int16_t (&kSine)[512] = kSineTable;
-const int16_t *const (&kWaveTables)[kTableCount][kFrameCount] = kWaveTableData;
+int16_t kSine[kTableSize];
+int16_t kWaveTables[kTableCount][kFrameCount][kTableSize];
+
+namespace {
+// Copies the tables from flash into RAM before anything else runs (~58 KB).
+struct LoadTables {
+  LoadTables() {
+    memcpy(kSine, kSineTable, sizeof(kSine));
+    for (uint8_t t = 0; t < kTableCount; ++t) {
+      for (uint8_t f = 0; f < kFrameCount; ++f) {
+        memcpy(kWaveTables[t][f], kWaveTableData[t][f], sizeof(kWaveTables[t][f]));
+      }
+    }
+  }
+} loadTables;
+}  // namespace
 
 uint32_t noteToPhaseStep(uint8_t midiNote) {
   return kMidiToPhaseStepLut[midiNote & 0x7F];

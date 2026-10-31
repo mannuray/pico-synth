@@ -1,4 +1,5 @@
 #include "RotarySpeaker.h"
+#include "AudioHot.h"
 #include "Oscillator.h"
 
 namespace {
@@ -17,7 +18,7 @@ void RotarySpeaker::setFast(bool fast) {
   fast_ = fast;
 }
 
-int32_t RotarySpeaker::readDelayed(int32_t delayQ8) const {
+int32_t AUDIO_HOT(RotarySpeaker::readDelayed)(int32_t delayQ8) const {
   const size_t whole = static_cast<size_t>(delayQ8 >> 8);
   const int32_t frac = delayQ8 & 0xFF;
   const int32_t a = buffer_[(index_ + kBufferSamples - whole) & (kBufferSamples - 1)];
@@ -25,7 +26,7 @@ int32_t RotarySpeaker::readDelayed(int32_t delayQ8) const {
   return a + (((b - a) * frac) >> 8);
 }
 
-void RotarySpeaker::process(int32_t &left, int32_t &right) {
+void AUDIO_HOT(RotarySpeaker::process)(int32_t &left, int32_t &right) {
   buffer_[index_] = static_cast<int16_t>(constrain((left + right) >> 1, -32768, 32767));
 
   // Ramp toward the target speed: time constant ~0.75 s up, ~1.5 s down.

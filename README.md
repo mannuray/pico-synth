@@ -157,8 +157,8 @@ arduino-cli core install rp2040:rp2040 --additional-urls https://github.com/earl
 ### Compile and upload
 
 ```bash
-arduino-cli compile -b rp2040:rp2040:rpipico arduino/synth_v1
-arduino-cli upload -b rp2040:rp2040:rpipico -p /dev/cu.usbmodem2101 arduino/synth_v1
+arduino-cli compile -b rp2040:rp2040:rpipico:opt=Optimize2 arduino/synth_v1
+arduino-cli upload -b rp2040:rp2040:rpipico:opt=Optimize2 -p /dev/cu.usbmodem2101 arduino/synth_v1
 ```
 
 ### Host tests
@@ -217,8 +217,8 @@ WaveTableData.h       Pre-generated wavetable data (14 instruments x 4 frames)
 | Resource | Used | Available | % |
 |----------|------|-----------|---|
 | Flash | 476 KB | 2,044 KB | 22% |
-| RAM | 54 KB | 256 KB | 20% |
-| CPU (8 voices + reverb) | not yet re-measured | 100% | see `cpu=` in the serial status line |
+| RAM | 121 KB | 256 KB | 46% |
+| CPU, 8 voices + drums + effect (worst case, 200 MHz) | 52-79% for most presets; 98-112% for the unison presets | 100% | see docs/engine.md |
 
 ## Documentation
 

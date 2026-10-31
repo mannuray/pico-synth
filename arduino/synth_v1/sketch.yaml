@@ -1,0 +1,3 @@
+# Default board for `arduino-cli compile/upload arduino/synth_v1` without -b.
+# opt=Optimize2 builds with -O2: ~10% less CPU than the core's default -Os.
+default_fqbn: rp2040:rp2040:rpipico:opt=Optimize2

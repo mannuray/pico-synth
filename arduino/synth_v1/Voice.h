@@ -15,8 +15,15 @@ public:
   void release() { stage_ = Stage::Release; }
   void reset() { *this = Voice{}; }
 
-  // Advances one sample. Returns 0 and resets itself once the note has died away.
-  int32_t render(const Preset &preset, const VoiceShape &shape, const VoiceModulation &modulation, dsp::NoiseSource &noise);
+  // Slow-changing values (filter cutoff, spectral envelope, vibrato, effect
+  // modulation) are updated once per this many samples; amplitude every sample.
+  static constexpr size_t kControlInterval = 8;
+
+  // Renders `frames` samples, adding the panned output to left/right.
+  // modulation has one entry per frame. Returns how many frames the voice was
+  // active: fewer than `frames` if the note died away (it then resets itself).
+  size_t renderBlock(const Preset &preset, const VoiceShape &shape, const VoiceModulation *modulation,
+                     size_t frames, int32_t *left, int32_t *right, dsp::NoiseSource &noise);
 
   bool active() const { return active_; }
   bool releasing() const { return stage_ == Stage::Release; }
@@ -77,8 +84,8 @@ private:
   dsp::StateVariableLowPass filter_;
 
   void advanceEnvelope(const VoiceShape &shape);
-  int32_t advanceSpectralEnvelope();
-  uint32_t currentPhaseStep(const VoiceModulation &modulation);
+  int32_t advanceSpectralEnvelope(uint32_t samples);
+  uint32_t currentPhaseStep(const VoiceModulation &modulation, uint32_t samples);
   int32_t oscillate(const Preset &preset, uint32_t phaseStep, int32_t modLevel15);
   int32_t organSounds(dsp::NoiseSource &noise);
   int32_t filterCutoff(const Preset &preset, const VoiceShape &shape, int32_t modLevel15) const;

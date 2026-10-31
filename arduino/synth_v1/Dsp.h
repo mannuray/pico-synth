@@ -1,12 +1,14 @@
 #pragma once
 
+#include "AudioHot.h"
+
 #include <Arduino.h>
 
 // Small fixed-point helpers shared by the synth engine and the effects.
 namespace dsp {
 
 // 512-sample table: 9-bit index from top bits, 16-bit fraction for interpolation.
-inline int16_t interpolateTable(const int16_t *table, uint32_t phase) {
+inline int16_t AUDIO_HOT(interpolateTable)(const int16_t *table, uint32_t phase) {
   const uint16_t index = static_cast<uint16_t>(phase >> 23) & 0x1FFu;
   const uint16_t nextIndex = (index + 1) & 0x1FFu;
   const int32_t frac = static_cast<int32_t>((phase >> 8) & 0x7FFFu);  // 15 bits so (b - a) * frac fits in 32 bits
@@ -53,7 +55,7 @@ struct StateVariableLowPass {
   }
 };
 
-inline int16_t softClip(int32_t sample) {
+inline int16_t AUDIO_HOT(softClip)(int32_t sample) {
   constexpr int32_t kThreshold = 24000;
   if (sample > kThreshold) {
     sample = kThreshold + ((sample - kThreshold) / 4);

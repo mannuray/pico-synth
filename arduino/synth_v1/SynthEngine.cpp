@@ -9,7 +9,8 @@ constexpr uint32_t kLfoPhaseStep = static_cast<uint32_t>((5.0 * 4294967296.0) / 
 constexpr int16_t kStereoPan[8] = {-80, 80, -160, 160, -40, 40, -120, 120};
 }  // namespace
 
-SynthEngine::SynthEngine(AudioOutput &audioOutput) : audioOutput_(audioOutput) {}
+SynthEngine::SynthEngine(AudioOutput &audioOutput, FeedbackSounds &feedback)
+    : audioOutput_(audioOutput), feedback_(feedback) {}
 
 bool SynthEngine::begin() {
   rhythm_.begin(config::kSampleRate);
@@ -69,32 +70,24 @@ void SynthEngine::setTempoBpm(uint8_t bpm) {
   rhythm_.setBpm(tempoBpm_);
 }
 
-void SynthEngine::setRhythmPlaying(bool enabled) {
-  rhythm_.setPlaying(enabled);
+void SynthEngine::startRhythm(bool intro) {
+  rhythm_.start(intro);
+}
+
+void SynthEngine::stopRhythm(bool ending) {
+  rhythm_.stop(ending);
+}
+
+void SynthEngine::rhythmFill() {
+  rhythm_.requestFill();
+}
+
+void SynthEngine::setRotaryFast(bool fast) {
+  rotary_.setFast(fast);
 }
 
 void SynthEngine::setRhythmPattern(uint8_t patternIndex) {
   rhythm_.setPattern(patternIndex);
-}
-
-void SynthEngine::setAttackOffset(int8_t offset) {
-  envelopeOffsets_.attack = offset;
-  updateShape();
-}
-
-void SynthEngine::setDecayOffset(int8_t offset) {
-  envelopeOffsets_.decay = offset;
-  updateShape();
-}
-
-void SynthEngine::setSustainOffset(int8_t offset) {
-  envelopeOffsets_.sustain = offset;
-  updateShape();
-}
-
-void SynthEngine::setReleaseOffset(int8_t offset) {
-  envelopeOffsets_.release = offset;
-  updateShape();
 }
 
 // Free voice first, then the quietest releasing voice, else the oldest note.
@@ -125,7 +118,7 @@ Voice &SynthEngine::allocateVoice() {
 }
 
 void SynthEngine::updateShape() {
-  shape_ = computeVoiceShape(presets::at(presetIndex_), envelopeOffsets_);
+  shape_ = computeVoiceShape(presets::at(presetIndex_));
 }
 
 // Renders in blocks of at most kAudioBlockFrames, the size of the scratch buffers.
@@ -149,7 +142,17 @@ uint32_t SynthEngine::renderBlock(size_t frameCount) {
 
   EffectContext ctx{0, 0, osc::kSine};
 
+  // Feedback blips follow the volume, but stay audible near volume 0.
+  const int32_t feedbackLevel = max<int32_t>(masterVolume_, 8192);
+
   for (size_t i = 0; i < frameCount; ++i) {
+    const int32_t feedbackSample = (feedback_.renderSample() * feedbackLevel) >> 15;
+    if (musicMuted_) {
+      blockL_[i] = dsp::softClip(feedbackSample);
+      blockR_[i] = dsp::softClip(feedbackSample);
+      continue;
+    }
+
     ctx.lfo = 0;
     if (needsLfo) {
       lfoPhase_ += kLfoPhaseStep;
@@ -191,8 +194,8 @@ uint32_t SynthEngine::renderBlock(size_t frameCount) {
     // Drums join after the effect and the rotary speaker: they stay dry and
     // sound the same whichever preset is selected.
     const int32_t drums = (constrain(rhythm_.renderSample(), -65535, 65535) * masterVolume_) >> 15;
-    left += drums;
-    right += drums;
+    left += drums + feedbackSample;
+    right += drums + feedbackSample;
 
     // Triangular dither (difference of two random bits: -1, 0 or +1) reduces
     // quantization noise on quiet tails.

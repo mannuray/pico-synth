@@ -2,13 +2,15 @@
 
 namespace {
 // Hammond B-3 style: percussion on the 3rd harmonic with a fast (~0.2 s) decay,
-// key click, Leslie on its fast "tremolo" speed (horn ~400 rpm = 6.7 Hz).
+// key click, Leslie horn at ~50 rpm "chorale" or ~400 rpm "tremolo" (0.8 / 6.7 Hz),
+// switched with the Leslie button.
 constexpr OrganTraits kHammond{
     .percussionHarmonic = 3,
     .percussionDecayMs = 250,
     .percussionLevel = 9000,
     .clickLevel = 5000,
-    .rotaryHzX10 = 67,
+    .rotarySlowHzX10 = 8,
+    .rotaryFastHzX10 = 67,
     .rotaryDepth = 150,
 };
 

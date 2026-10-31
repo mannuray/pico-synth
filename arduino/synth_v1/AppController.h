@@ -1,5 +1,6 @@
 #pragma once
 
+#include "ControlHold.h"
 #include "CpuMeter.h"
 #include "IAudioRenderer.h"
 #include "IClock.h"
@@ -39,6 +40,7 @@ private:
   const IClock &clock_;
   Print &log_;
   CpuMeter cpuMeter_;
+  ControlHold controlHold_;
   uint16_t micLevel_ = 0;
   uint32_t lastScanMs_ = 0;
   uint32_t lastStatusMs_ = 0;

@@ -5,14 +5,6 @@
 
 #include <Arduino.h>
 
-enum class EnvelopeParam : uint8_t {
-  Attack = 0,
-  Decay,
-  Sustain,
-  Release,
-  Count
-};
-
 // Single source of truth for performance settings. Output sinks only mirror it.
 class PerformanceState {
 public:
@@ -45,9 +37,13 @@ public:
   void setMasterVolume(int volume);
   int16_t masterVolume() const;
 
-  void setEnvelopeOffset(EnvelopeParam param, int8_t offset);
-  int8_t envelopeOffset(EnvelopeParam param) const;
-  void resetEnvelopeOffsets();
+  // Rhythm armed to start with the first key played.
+  void setSyncStartArmed(bool armed);
+  bool syncStartArmed() const;
+
+  // Organ rotary speaker: fast (tremolo) or slow (chorale).
+  void setRotaryFast(bool fast);
+  bool rotaryFast() const;
 
 private:
   uint8_t bank_ = 0;
@@ -59,5 +55,6 @@ private:
   bool rhythmPlaying_ = false;
   uint8_t rhythmPattern_ = 0;
   int16_t masterVolume_ = config::kDefaultMasterVolume;
-  int8_t envelopeOffsets_[static_cast<uint8_t>(EnvelopeParam::Count)] = {};
+  bool syncStartArmed_ = false;
+  bool rotaryFast_ = false;
 };

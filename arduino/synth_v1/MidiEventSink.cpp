@@ -17,10 +17,6 @@ constexpr uint8_t kCcEffect = 23;
 constexpr uint8_t kCcEffectEnabled = 24;
 constexpr uint8_t kCcRhythmPattern = 25;
 constexpr uint8_t kCcSustain = 64;
-constexpr uint8_t kCcSustainLevel = 70;
-constexpr uint8_t kCcReleaseTime = 72;
-constexpr uint8_t kCcAttackTime = 73;
-constexpr uint8_t kCcDecayTime = 75;
 constexpr uint8_t kCcRhythmPlaying = 111;
 constexpr uint8_t kCcAllSoundOff = 120;
 constexpr uint8_t kCcAllNotesOff = 123;
@@ -69,10 +65,6 @@ void sendProgramChange(uint8_t program) {
   MidiUSB.sendMIDI(packet);
 }
 
-// Envelope offsets go out as 0..4 (offset + 2).
-int envelopeValue(int16_t offset) {
-  return offset - config::kMinEnvelopeOffset;
-}
 }  // namespace
 
 void MidiEventSink::handleEvent(const KeyboardEvent &event) {
@@ -114,7 +106,8 @@ void MidiEventSink::handleCommand(const PerformanceCommand &command) {
       sendControlChange(kCcEffectEnabled, command.value);
       break;
     case CommandType::RhythmPlaying:
-      sendControlChange(kCcRhythmPlaying, command.value);
+      sendControlChange(kCcRhythmPlaying,
+                        (command.value == kRhythmStart || command.value == kRhythmStartWithIntro) ? 1 : 0);
       break;
     case CommandType::RhythmPattern:
       sendControlChange(kCcRhythmPattern, command.value);
@@ -125,17 +118,8 @@ void MidiEventSink::handleCommand(const PerformanceCommand &command) {
     case CommandType::Transpose:
       sendControlChange(kCcTranspose, command.value - config::kMinTranspose);
       break;
-    case CommandType::AttackOffset:
-      sendControlChange(kCcAttackTime, envelopeValue(command.value));
-      break;
-    case CommandType::DecayOffset:
-      sendControlChange(kCcDecayTime, envelopeValue(command.value));
-      break;
-    case CommandType::SustainOffset:
-      sendControlChange(kCcSustainLevel, envelopeValue(command.value));
-      break;
-    case CommandType::ReleaseOffset:
-      sendControlChange(kCcReleaseTime, envelopeValue(command.value));
+    case CommandType::RhythmFill:     // drum-machine control, synth only
+    case CommandType::RotaryFast:     // no standard MIDI message
       break;
     case CommandType::AllNotesOff:
       sendControlChange(kCcAllSoundOff, 0);

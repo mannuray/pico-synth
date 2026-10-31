@@ -169,14 +169,64 @@ void RhythmEngine::setBpm(uint8_t bpm) {
   bpm_ = constrain(bpm, config::kTempoMinBpm, config::kTempoMaxBpm);
 }
 
-void RhythmEngine::setPlaying(bool playing) {
-  playing_ = playing;
+void RhythmEngine::start(bool intro) {
+  playing_ = true;
+  currentPattern_ = pendingPattern_;
+  currentStep_ = 0;
+  // An intro is simply the fill bar played first; its crash lands on bar 1.
+  barInPhrase_ = (intro && hasFill(currentPatternDef())) ? 3 : 0;
+  crashNext_ = false;
+  fillRequested_ = false;
+  endingRequested_ = false;
+  endingAfterFill_ = false;
+  samplesUntilNextStep_ = 0;
+}
+
+void RhythmEngine::stop(bool ending) {
+  if (ending && playing_) {
+    endingRequested_ = true;
+  } else {
+    playing_ = false;
+  }
+}
+
+void RhythmEngine::requestFill() {
   if (playing_) {
+    fillRequested_ = true;
+  }
+}
+
+// Bar-line actions, in order: finish an ending, switch pattern, start an
+// ending or requested fill.
+void RhythmEngine::onBarLine() {
+  if (endingAfterFill_) {
+    hit(kCrashVoice, kDrumId_Crash, 'X', kCrashGain, 0);
+    playing_ = false;
+    endingAfterFill_ = false;
+    crashNext_ = false;
+    return;
+  }
+  if (pendingPattern_ != currentPattern_) {
     currentPattern_ = pendingPattern_;
     currentStep_ = 0;
     barInPhrase_ = 0;
     crashNext_ = false;
-    samplesUntilNextStep_ = 0;
+  }
+  if (endingRequested_) {
+    endingRequested_ = false;
+    if (hasFill(currentPatternDef())) {
+      barInPhrase_ = 3;
+      endingAfterFill_ = true;
+    } else {
+      hit(kCrashVoice, kDrumId_Crash, 'X', kCrashGain, 0);
+      playing_ = false;
+      crashNext_ = false;
+    }
+    return;
+  }
+  if (fillRequested_) {
+    fillRequested_ = false;
+    barInPhrase_ = 3;
   }
 }
 
@@ -258,14 +308,12 @@ void RhythmEngine::hit(uint8_t voiceIndex, uint8_t sampleId, char velocity, int3
 
 int32_t RhythmEngine::renderSample() {
   if (playing_) {
+    if (samplesUntilNextStep_ == 0 && currentStep_ % currentPatternDef().stepsPerBar == 0) {
+      onBarLine();
+    }
+  }
+  if (playing_) {
     if (samplesUntilNextStep_ == 0) {
-      // A newly selected pattern takes over at the bar line, from its first step.
-      if (pendingPattern_ != currentPattern_ && currentStep_ % currentPatternDef().stepsPerBar == 0) {
-        currentPattern_ = pendingPattern_;
-        currentStep_ = 0;
-        barInPhrase_ = 0;
-        crashNext_ = false;
-      }
       const RhythmPattern &p = currentPatternDef();
       const uint16_t length = static_cast<uint16_t>(patternLength(p));
       if (currentStep_ >= length) currentStep_ = 0;

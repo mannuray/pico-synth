@@ -5,12 +5,14 @@
 // Leslie-style rotary speaker for the organ presets. The rotating horn is
 // modelled as a short modulated delay (Doppler pitch wobble) plus amplitude
 // modulation, with the two output sides 180 degrees apart like two mics on
-// opposite sides of the cabinet.
+// opposite sides of the cabinet. Switching speed ramps like the real motor:
+// about a second to spin up, a few seconds to slow down.
 class RotarySpeaker {
 public:
   // nullptr, or traits with no rotary speed, disables it.
   void configure(const OrganTraits *organ);
-  bool enabled() const { return step_ != 0; }
+  bool enabled() const { return slowStep_ != 0; }
+  void setFast(bool fast);
 
   // Processes one stereo sample in place.
   void process(int32_t &left, int32_t &right);
@@ -20,8 +22,11 @@ private:
   int16_t buffer_[kBufferSamples] = {};
   size_t index_ = 0;
   uint32_t phase_ = 0;
-  uint32_t step_ = 0;
-  int32_t depth_ = 0;  // 0..255
+  uint32_t step_ = 0;       // current speed (phase increment per sample)
+  uint32_t slowStep_ = 0;
+  uint32_t fastStep_ = 0;
+  bool fast_ = false;
+  int32_t depth_ = 0;       // 0..255
 
   int32_t readDelayed(int32_t delayQ8) const;
 };

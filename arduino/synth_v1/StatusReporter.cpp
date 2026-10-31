@@ -23,6 +23,9 @@ void printStatusLine(Print &out, const StatusSnapshot &status) {
   out.print(performance.effectEnabled() ? "(on)" : "(off)");
   out.print(" rhythm=");
   out.print(performance.rhythmPlaying() ? "on" : "off");
+  out.print(performance.syncStartArmed() ? "(sync)" : "");
+  out.print(" leslie=");
+  out.print(performance.rotaryFast() ? "fast" : "slow");
   out.print(" pattern=");
   out.print(rhythmPatternAt(performance.rhythmPattern()).name);
   out.print(" bpm=");

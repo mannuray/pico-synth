@@ -1,6 +1,11 @@
 #pragma once
 #include <stdio.h>
 
+#include "Feedback.h"
+
+// Feedback sounds for engines that don't test them (idle unless cued).
+static FeedbackSounds gFeedback;
+
 static int gFailures = 0;
 #define CHECK(cond)                                                   \
   do {                                                                \

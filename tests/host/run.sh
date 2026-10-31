@@ -10,7 +10,7 @@ trap 'rm -rf "$OUT"' EXIT
 CXX=${CXX:-c++}
 FLAGS="-std=gnu++20 -O1 -g -Wall -Wextra -Wno-unused-parameter -fsanitize=undefined -fno-sanitize-recover=undefined -I$HERE/stub -I$SRC"
 
-ENGINE="$SRC/SynthEngine.cpp $SRC/Voice.cpp $SRC/VoiceShape.cpp $SRC/Oscillator.cpp \
+ENGINE="$SRC/SynthEngine.cpp $SRC/Voice.cpp $SRC/VoiceShape.cpp $SRC/Oscillator.cpp $SRC/Feedback.cpp \
         $SRC/RotarySpeaker.cpp $SRC/Effects.cpp $SRC/Presets.cpp $SRC/RhythmEngine.cpp"
 CONTROL="$SRC/PerformanceController.cpp $SRC/PerformanceState.cpp $SRC/PitchSettings.cpp \
          $SRC/KeyTracker.cpp $SRC/OutputRouter.cpp $SRC/SynthEventSink.cpp"
@@ -18,7 +18,7 @@ APP="$SRC/AppController.cpp $SRC/StatusReporter.cpp $SRC/MidiEventSink.cpp"
 
 $CXX $FLAGS "$HERE/golden.cpp" $ENGINE -o "$OUT/golden"
 $CXX $FLAGS "$HERE/engine_test.cpp" $ENGINE -o "$OUT/engine_test"
-$CXX $FLAGS "$HERE/rhythm_test.cpp" $SRC/RhythmEngine.cpp -o "$OUT/rhythm_test"
+$CXX $FLAGS "$HERE/rhythm_test.cpp" $SRC/RhythmEngine.cpp $SRC/Feedback.cpp $SRC/Oscillator.cpp -o "$OUT/rhythm_test"
 $CXX $FLAGS "$HERE/control_test.cpp" $CONTROL $ENGINE -o "$OUT/control_test"
 $CXX $FLAGS "$HERE/midi_test.cpp" $APP $CONTROL $ENGINE -o "$OUT/midi_test"
 

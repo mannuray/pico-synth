@@ -39,7 +39,7 @@ static std::vector<int32_t> renderPattern(uint8_t pattern, uint8_t bpm, double s
   rhythm.begin(config::kSampleRate);
   rhythm.setBpm(bpm);
   rhythm.setPattern(pattern);
-  rhythm.setPlaying(true);
+  rhythm.start();
   std::vector<int32_t> out(static_cast<size_t>(seconds * config::kSampleRate));
   for (int32_t &s : out) s = rhythm.renderSample();
   return out;
@@ -128,7 +128,7 @@ static void patternChangesOnTheBarLine() {
   rhythm.begin(config::kSampleRate);
   rhythm.setBpm(bpm);
   rhythm.setPattern(0);  // Pop
-  rhythm.setPlaying(true);
+  rhythm.start();
   std::vector<int32_t> out;
   for (size_t i = 0; i < 5 * step; ++i) out.push_back(rhythm.renderSample());
   rhythm.setPattern(0);  // same pattern again: no restart
@@ -139,11 +139,55 @@ static void patternChangesOnTheBarLine() {
   CHECK(kickEnergy(out, 26 * step) * 4 > downbeatKick);   // Rock from bar 2 (16 + 10)
 }
 
+// Intro: the fill bar comes first and its crash lands on bar 2's downbeat.
+// Ending: finish the bar, play the fill bar, crash, then stop.
+// Fill on demand: next bar is a fill, crash on the bar after.
+static void introEndingAndFill() {
+  const uint8_t bpm = 112;
+  const size_t bar = static_cast<size_t>(config::kSampleRate * 60.0 / bpm * 4);
+  auto run = [&](auto &&control, size_t bars) {
+    RhythmEngine rhythm;
+    rhythm.begin(config::kSampleRate);
+    rhythm.setBpm(bpm);
+    rhythm.setPattern(1);  // Rock
+    std::vector<int32_t> out;
+    control(rhythm, out, bars);
+    return out;
+  };
+
+  const auto intro = run([&](RhythmEngine &r, std::vector<int32_t> &out, size_t bars) {
+    r.start(true);
+    for (size_t i = 0; i < bars * bar; ++i) out.push_back(r.renderSample());
+  }, 3);
+  CHECK(crashEnergy(intro, bar) > 4 * crashEnergy(intro, 0));  // crash on bar 2, not bar 1
+
+  bool stoppedAfter = false;
+  const auto ending = run([&](RhythmEngine &r, std::vector<int32_t> &out, size_t) {
+    r.start(false);
+    for (size_t i = 0; i < bar / 2; ++i) out.push_back(r.renderSample());
+    r.stop(true);                                       // mid-bar 1
+    for (size_t i = bar / 2; i < 4 * bar; ++i) out.push_back(r.renderSample());
+    stoppedAfter = !r.playing();
+  }, 4);
+  CHECK(stoppedAfter);
+  CHECK(crashEnergy(ending, 2 * bar) > 4 * crashEnergy(ending, bar));  // bar 2 = fill, crash at bar 3
+  CHECK(kickEnergy(ending, 3 * bar) * 20 < kickEnergy(ending, 0));     // nothing after the ending
+
+  const auto fill = run([&](RhythmEngine &r, std::vector<int32_t> &out, size_t) {
+    r.start(false);
+    for (size_t i = 0; i < bar / 2; ++i) out.push_back(r.renderSample());
+    r.requestFill();                                    // bar 2 becomes the fill
+    for (size_t i = bar / 2; i < 3 * bar + bar / 4; ++i) out.push_back(r.renderSample());
+  }, 4);
+  CHECK(crashEnergy(fill, 2 * bar) > 4 * crashEnergy(fill, bar));      // crash at bar 3
+}
+
 int main() {
   patternsAreWellFormed();
   hitsLandOnTheGrid();
   crashFollowsFill();
   waltzIsInThree();
   patternChangesOnTheBarLine();
+  introEndingAndFill();
   return finish("rhythm_test");
 }

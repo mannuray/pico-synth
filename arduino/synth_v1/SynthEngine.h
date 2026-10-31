@@ -4,6 +4,7 @@
 #include "Config.h"
 #include "Dsp.h"
 #include "Effects.h"
+#include "Feedback.h"
 #include "IAudioRenderer.h"
 #include "RhythmEngine.h"
 #include "RotarySpeaker.h"
@@ -15,7 +16,7 @@
 // master effect and the organ's rotary speaker, and writes to the audio output.
 class SynthEngine final : public IAudioRenderer {
 public:
-  explicit SynthEngine(AudioOutput &audioOutput);
+  SynthEngine(AudioOutput &audioOutput, FeedbackSounds &feedback);
 
   bool begin();
   void noteOn(uint8_t midiNote);
@@ -26,25 +27,26 @@ public:
   void setEffect(EffectType effect);
   void setEffectEnabled(bool enabled);
   void setTempoBpm(uint8_t bpm);
-  void setRhythmPlaying(bool enabled);
+  void startRhythm(bool intro);
+  void stopRhythm(bool ending);
+  void rhythmFill();
   void setRhythmPattern(uint8_t patternIndex);
-
-  void setAttackOffset(int8_t offset);
-  void setDecayOffset(int8_t offset);
-  void setSustainOffset(int8_t offset);
-  void setReleaseOffset(int8_t offset);
+  void setRotaryFast(bool fast);
 
   void renderFrames(size_t frameCount) override;
   uint32_t lastProcessingUs() const override { return lastProcessingUs_; }
+  void setMusicMuted(bool muted) override { musicMuted_ = muted; }
+  bool feedbackActive() const override { return feedback_.active(); }
 
 private:
   AudioOutput &audioOutput_;
+  FeedbackSounds &feedback_;
+  bool musicMuted_ = false;
   Voice voices_[config::kPolyphony];
   uint32_t voiceStartOrder_[config::kPolyphony] = {};  // for stealing the oldest note
   uint32_t notesStarted_ = 0;
   uint8_t presetIndex_ = 0;
   VoiceShape shape_;
-  EnvelopeOffsets envelopeOffsets_;
   int16_t masterVolume_ = config::kDefaultMasterVolume;
   uint8_t tempoBpm_ = config::kTempoDefaultBpm;
   uint32_t lastProcessingUs_ = 0;

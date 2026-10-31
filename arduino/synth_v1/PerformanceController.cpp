@@ -4,10 +4,16 @@
 
 namespace {
 constexpr int kTempoStepBpm = 5;
-}
 
-PerformanceController::PerformanceController(IEventSink &output, Print &log)
-    : output_(output), log_(log) {}
+// Volume moves in 3 dB steps: x0.708 down, x1.413 up (Q15). Below about
+// -30 dB the next step down is silence; from silence the next step up is -30 dB.
+constexpr int32_t kVolumeDownQ15 = 23198;
+constexpr int32_t kVolumeUpQ15 = 46286;
+constexpr int16_t kQuietestVolume = 1036;
+}  // namespace
+
+PerformanceController::PerformanceController(IEventSink &output, IFeedback &feedback, Print &log)
+    : output_(output), feedback_(feedback), log_(log) {}
 
 void PerformanceController::begin() {
   loadPresetDefaults();
@@ -26,6 +32,7 @@ bool PerformanceController::handleKey(uint8_t keyIndex, bool pressed) {
 }
 
 void PerformanceController::handleControl(ControlType control, uint8_t value) {
+  hitLimit_ = false;
   switch (control) {
     case ControlType::InstrumentSelect: selectInstrument(value); break;
     case ControlType::BankDown:         stepBank(-1); break;
@@ -43,13 +50,17 @@ void PerformanceController::handleControl(ControlType control, uint8_t value) {
     case ControlType::EffectToggle:     toggleEffect(); break;
     case ControlType::RhythmStartStop:  toggleRhythm(); break;
     case ControlType::RhythmSelect:     selectRhythm(value); break;
-    case ControlType::AttackUp:         cycleEnvelopeOffset(EnvelopeParam::Attack); break;
-    case ControlType::DecayUp:          cycleEnvelopeOffset(EnvelopeParam::Decay); break;
-    case ControlType::SustainUp:        cycleEnvelopeOffset(EnvelopeParam::Sustain); break;
-    case ControlType::ReleaseUp:        cycleEnvelopeOffset(EnvelopeParam::Release); break;
+    case ControlType::RhythmFill:       rhythmFill(); break;
+    case ControlType::SyncStart:        toggleSyncStart(); break;
+    case ControlType::IntroEnding:      introOrEnding(); break;
+    case ControlType::LeslieSpeed:      toggleLeslie(); break;
     case ControlType::Panic:            panic(); break;
     case ControlType::None:             break;
   }
+}
+
+void PerformanceController::toggleFeedback() {
+  feedback_.setEnabled(!feedback_.enabled());
 }
 
 void PerformanceController::syncOutputs() {
@@ -59,9 +70,10 @@ void PerformanceController::syncOutputs() {
   sendQuiet(CommandType::Volume, performance_.masterVolume());
   sendQuiet(CommandType::Tempo, performance_.tempoBpm());
   sendQuiet(CommandType::RhythmPattern, performance_.rhythmPattern());
-  sendQuiet(CommandType::RhythmPlaying, performance_.rhythmPlaying() ? 1 : 0);
+  sendQuiet(CommandType::RhythmPlaying, performance_.rhythmPlaying() ? kRhythmStart : kRhythmStop);
   sendQuiet(CommandType::OctaveShift, pitch_.octaveShift());
   sendQuiet(CommandType::Transpose, pitch_.transpose());
+  sendQuiet(CommandType::RotaryFast, performance_.rotaryFast() ? 1 : 0);
 }
 
 // ---- Key handling ----
@@ -69,6 +81,11 @@ void PerformanceController::syncOutputs() {
 bool PerformanceController::pressKey(uint8_t keyIndex) {
   if (keys_.isHeld(keyIndex)) {
     return false;
+  }
+  // Sync start: the first key played starts the rhythm, in time with it.
+  if (performance_.syncStartArmed() && !performance_.rhythmPlaying()) {
+    performance_.setSyncStartArmed(false);
+    startRhythm(kRhythmStart);
   }
   if (keys_.isSounding(keyIndex)) {
     // Still ringing under sustain: end that note first, or it would hang
@@ -114,34 +131,57 @@ void PerformanceController::selectInstrument(uint8_t slot) {
   logPreset();
 }
 
+// Feedback: N blips for bank N, a "bonk" at either end.
 void PerformanceController::stepBank(int8_t direction) {
   const int bank = performance_.bank() + direction;
   if (bank >= 0 && bank < config::kBankCount) {
     performance_.setBank(static_cast<uint8_t>(bank));
     send(CommandType::SelectBank, performance_.bank());
     applyActivePreset();
+    feedback_.cue(FeedbackCue::Count, static_cast<uint8_t>(performance_.bank() + 1));
+  } else {
+    cueLimit();
   }
   logPreset();
 }
 
 void PerformanceController::stepOctave(int8_t direction) {
+  const int before = pitch_.octaveShift();
   pitch_.setOctaveShift(pitch_.octaveShift() + direction);
   send(CommandType::OctaveShift, pitch_.octaveShift());
+  cueStep(before, pitch_.octaveShift(), direction, 0);
 }
 
 void PerformanceController::stepTranspose(int8_t direction) {
+  const int before = pitch_.transpose();
   pitch_.setTranspose(pitch_.transpose() + direction);
   send(CommandType::Transpose, pitch_.transpose());
+  cueStep(before, pitch_.transpose(), direction, 0);
 }
 
 void PerformanceController::stepVolume(int8_t direction) {
-  performance_.setMasterVolume(performance_.masterVolume() + direction * config::kVolumeStep);
+  const int32_t before = performance_.masterVolume();
+  int32_t volume = before;
+  if (direction < 0) {
+    volume = (volume * kVolumeDownQ15) >> 15;
+    if (volume < kQuietestVolume) volume = 0;
+  } else {
+    volume = (volume == 0) ? kQuietestVolume : ((volume * kVolumeUpQ15) >> 15);
+  }
+  performance_.setMasterVolume(volume);
+  if (performance_.masterVolume() == before) {
+    cueLimit();
+    return;
+  }
   send(CommandType::Volume, performance_.masterVolume());
+  feedback_.cue(FeedbackCue::Blip);  // plays at the new volume
 }
 
 void PerformanceController::stepTempo(int8_t direction) {
+  const int before = performance_.tempoBpm();
   performance_.setTempoBpm(performance_.tempoBpm() + direction * kTempoStepBpm);
   send(CommandType::Tempo, performance_.tempoBpm());
+  cueStep(before, performance_.tempoBpm(), direction, -1);
 }
 
 void PerformanceController::toggleSustain() {
@@ -151,68 +191,110 @@ void PerformanceController::toggleSustain() {
   if (!performance_.sustainEnabled()) {
     releaseSustainedNotes();
   }
+  feedback_.cue(performance_.sustainEnabled() ? FeedbackCue::Up : FeedbackCue::Down);
 }
 
 void PerformanceController::toggleEffect() {
   performance_.setEffectEnabled(!performance_.effectEnabled());
   send(CommandType::EffectEnabled, performance_.effectEnabled() ? 1 : 0);
+  feedback_.cue(performance_.effectEnabled() ? FeedbackCue::Up : FeedbackCue::Down);
 }
 
+// Choosing an effect also switches it on, so the choice is heard.
 void PerformanceController::nextEffect() {
   const uint8_t next = (static_cast<uint8_t>(performance_.effect()) + 1) % static_cast<uint8_t>(EffectType::Count);
   performance_.setEffect(static_cast<EffectType>(next));
   send(CommandType::Effect, static_cast<int16_t>(performance_.effect()));
+  if (!performance_.effectEnabled()) {
+    performance_.setEffectEnabled(true);
+    send(CommandType::EffectEnabled, 1);
+  }
+  feedback_.cue(FeedbackCue::Blip);
 }
 
 void PerformanceController::toggleRhythm() {
-  performance_.setRhythmPlaying(!performance_.rhythmPlaying());
-  send(CommandType::RhythmPlaying, performance_.rhythmPlaying() ? 1 : 0);
+  if (performance_.rhythmPlaying()) {
+    performance_.setRhythmPlaying(false);
+    send(CommandType::RhythmPlaying, kRhythmStop);
+  } else {
+    performance_.setSyncStartArmed(false);
+    startRhythm(kRhythmStart);
+  }
 }
 
-// Like an arranger keyboard, choosing a rhythm also recalls its usual tempo.
+// Recalls the pattern's usual tempo only while stopped: when switching
+// patterns mid-song, the tempo you're playing at is kept.
 void PerformanceController::selectRhythm(uint8_t pattern) {
   performance_.setRhythmPattern(pattern);
   send(CommandType::RhythmPattern, performance_.rhythmPattern());
-  performance_.setTempoBpm(rhythmPatternAt(performance_.rhythmPattern()).defaultBpm);
-  send(CommandType::Tempo, performance_.tempoBpm());
+  if (!performance_.rhythmPlaying()) {
+    performance_.setTempoBpm(rhythmPatternAt(performance_.rhythmPattern()).defaultBpm);
+    send(CommandType::Tempo, performance_.tempoBpm());
+  }
 }
 
-// Cycles -2, -1, 0, 1, 2, -2, ...
-void PerformanceController::cycleEnvelopeOffset(EnvelopeParam param) {
-  const int8_t current = performance_.envelopeOffset(param);
-  const int8_t next = (current >= config::kMaxEnvelopeOffset) ? config::kMinEnvelopeOffset : static_cast<int8_t>(current + 1);
-  performance_.setEnvelopeOffset(param, next);
-  send(envelopeCommand(param), next);
+void PerformanceController::rhythmFill() {
+  if (!performance_.rhythmPlaying()) {
+    cueLimit();
+    return;
+  }
+  send(CommandType::RhythmFill, 0);
 }
 
+void PerformanceController::toggleSyncStart() {
+  performance_.setSyncStartArmed(!performance_.syncStartArmed());
+  feedback_.cue(performance_.syncStartArmed() ? FeedbackCue::Up : FeedbackCue::Down);
+}
+
+// Stopped: start with the intro (fill) bar. Playing: end with a fill and crash.
+void PerformanceController::introOrEnding() {
+  if (performance_.rhythmPlaying()) {
+    performance_.setRhythmPlaying(false);
+    send(CommandType::RhythmPlaying, kRhythmStopWithEnding);
+  } else {
+    performance_.setSyncStartArmed(false);
+    startRhythm(kRhythmStartWithIntro);
+  }
+}
+
+// Leslie fast/slow, only on presets with a rotary speaker.
+void PerformanceController::toggleLeslie() {
+  if (!presetHasRotary()) {
+    cueLimit();
+    return;
+  }
+  performance_.setRotaryFast(!performance_.rotaryFast());
+  send(CommandType::RotaryFast, performance_.rotaryFast() ? 1 : 0);
+  feedback_.cue(performance_.rotaryFast() ? FeedbackCue::Up : FeedbackCue::Down);
+}
+
+// Stops every note; also releases sustain so the next notes don't hang.
+// The rhythm keeps playing.
 void PerformanceController::panic() {
   keys_.reset();
   send(CommandType::AllNotesOff, 0);
+  if (performance_.sustainEnabled()) {
+    performance_.setSustainEnabled(false);
+    send(CommandType::Sustain, 0);
+  }
 }
 
 // ---- Presets ----
 
-// A preset brings its own default effect and resets the envelope tweaks.
+// A preset brings its own default effect.
 void PerformanceController::loadPresetDefaults() {
   const Preset &preset = presets::at(performance_.activePresetIndex());
-  performance_.resetEnvelopeOffsets();
   performance_.setEffect(preset.defaultEffect);
   performance_.setEffectEnabled(preset.effectEnabled);
 }
 
 // Sends the preset plus only the defaults that changed, so MIDI hosts aren't
-// sent envelope or effect CCs the user never touched.
+// sent effect CCs the user never touched.
 void PerformanceController::applyActivePreset() {
   const PerformanceState before = performance_;
   loadPresetDefaults();
 
   sendQuiet(CommandType::SelectPreset, performance_.activePresetIndex());
-  for (uint8_t i = 0; i < static_cast<uint8_t>(EnvelopeParam::Count); ++i) {
-    const EnvelopeParam param = static_cast<EnvelopeParam>(i);
-    if (performance_.envelopeOffset(param) != before.envelopeOffset(param)) {
-      sendQuiet(envelopeCommand(param), performance_.envelopeOffset(param));
-    }
-  }
   if (performance_.effect() != before.effect()) {
     sendQuiet(CommandType::Effect, static_cast<int16_t>(performance_.effect()));
   }
@@ -221,18 +303,40 @@ void PerformanceController::applyActivePreset() {
   }
 }
 
-// Preset first: the envelope offsets apply on top of it.
 void PerformanceController::sendPresetState() {
   sendQuiet(CommandType::SelectPreset, performance_.activePresetIndex());
-  for (uint8_t i = 0; i < static_cast<uint8_t>(EnvelopeParam::Count); ++i) {
-    const EnvelopeParam param = static_cast<EnvelopeParam>(i);
-    sendQuiet(envelopeCommand(param), performance_.envelopeOffset(param));
-  }
   sendQuiet(CommandType::Effect, static_cast<int16_t>(performance_.effect()));
   sendQuiet(CommandType::EffectEnabled, performance_.effectEnabled() ? 1 : 0);
 }
 
+bool PerformanceController::presetHasRotary() const {
+  const OrganTraits *organ = presets::at(performance_.activePresetIndex()).organ;
+  return organ != nullptr && organ->rotarySlowHzX10 > 0;
+}
+
 // ---- Output ----
+
+void PerformanceController::startRhythm(int16_t transport) {
+  performance_.setRhythmPlaying(true);
+  send(CommandType::RhythmPlaying, transport);
+}
+
+// Feedback for a stepped value: "bonk" if it couldn't move, a double blip on
+// reaching `center` (pass -1 for none), otherwise rising or falling notes.
+void PerformanceController::cueStep(int before, int after, int direction, int center) {
+  if (after == before) {
+    cueLimit();
+  } else if (after == center) {
+    feedback_.cue(FeedbackCue::Center);
+  } else {
+    feedback_.cue(direction > 0 ? FeedbackCue::Up : FeedbackCue::Down);
+  }
+}
+
+void PerformanceController::cueLimit() {
+  hitLimit_ = true;
+  feedback_.cue(FeedbackCue::Limit);
+}
 
 void PerformanceController::send(CommandType type, int16_t value) {
   log_.print("cmd ");
@@ -265,19 +369,4 @@ void PerformanceController::logPreset() {
   log_.print(performance_.instrumentSlot());
   log_.print(" preset=");
   log_.println(presets::at(performance_.activePresetIndex()).name);
-}
-
-CommandType PerformanceController::envelopeCommand(EnvelopeParam param) {
-  switch (param) {
-    case EnvelopeParam::Attack:
-      return CommandType::AttackOffset;
-    case EnvelopeParam::Decay:
-      return CommandType::DecayOffset;
-    case EnvelopeParam::Sustain:
-      return CommandType::SustainOffset;
-    case EnvelopeParam::Release:
-    case EnvelopeParam::Count:
-      break;
-  }
-  return CommandType::ReleaseOffset;
 }

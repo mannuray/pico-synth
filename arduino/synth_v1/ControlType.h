@@ -22,8 +22,8 @@ enum class ControlType : uint8_t {
   RhythmSelect,
   TransposeDown,
   TransposeUp,
-  AttackUp,
-  DecayUp,
-  SustainUp,
-  ReleaseUp
+  RhythmFill,      // play a fill on the next bar
+  SyncStart,       // arm: the rhythm starts with the first key played
+  IntroEnding,     // stopped: start with an intro fill; playing: end with a fill and crash
+  LeslieSpeed      // organ: rotary speaker fast/slow
 };

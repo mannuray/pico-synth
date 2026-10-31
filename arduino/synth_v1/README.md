@@ -26,7 +26,7 @@ arduino-cli upload -b rp2040:rp2040:rpipico -p /dev/cu.usbmodem2101 arduino/synt
 | KeyboardEvent.h, PerformanceCommand.h | Note events and typed performance commands |
 | SynthEngine.h/cpp | Voice allocation, mixing, effect/rotary routing, audio output |
 | Voice.h/cpp | One note: oscillators (plain/unison/FM), envelope, filter, organ percussion and click |
-| VoiceShape.h/cpp | Per-preset envelope and filter constants, with the ADSR offsets applied |
+| VoiceShape.h/cpp | Per-preset envelope and filter constants |
 | Oscillator.h/cpp | Waveforms and wavetable lookup (the only file that includes WaveTableData.h) |
 | RotarySpeaker.h/cpp | Leslie-style rotary speaker for the organ presets |
 | Effects.h/cpp, EffectTypes.h | Master effects (one class each), the effect rack, and the data they share with voices |
@@ -38,6 +38,8 @@ arduino-cli upload -b rp2040:rp2040:rpipico -p /dev/cu.usbmodem2101 arduino/synt
 | Config.h | Hardware pins, sample rate, polyphony, bank configuration |
 | MatrixMap.h | Key matrix to note/control mapping |
 | ControlType.h | What each front-panel button does |
+| ControlHold.h | Hold-to-repeat and long-press detection for buttons |
+| Feedback.h/cpp | Confirmation sounds for button presses |
 | MatrixScanner.h/cpp | Matrix scanning with debounce (implements IKeyMatrix) |
 | MicInput.h/cpp | Mic level input (implements ILevelInput) |
 | I2SAudioOutput.h/cpp | I2S stereo audio output via PIO |

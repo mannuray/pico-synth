@@ -2,15 +2,6 @@
 
 #include "SynthTypes.h"
 
-// User tweaks applied on top of the preset's envelope (each -2..2;
-// positive = longer time / higher sustain level).
-struct EnvelopeOffsets {
-  int8_t attack = 0;
-  int8_t decay = 0;
-  int8_t sustain = 0;
-  int8_t release = 0;
-};
-
 // Envelope levels are Q30 (kEnvelopeFull = 1.0); rates are Q20 fractions per sample.
 constexpr int32_t kEnvelopeFull = 1 << 30;
 
@@ -27,7 +18,7 @@ struct VoiceShape {
   int32_t resonanceDamping = 180; // precomputed: 180 - resonance/2
 };
 
-VoiceShape computeVoiceShape(const Preset &preset, const EnvelopeOffsets &offsets);
+VoiceShape computeVoiceShape(const Preset &preset);
 
 // Converts milliseconds to an exponential envelope rate (Q20 fraction per sample).
 // After ms milliseconds, the envelope will have completed ~99% of its transition.

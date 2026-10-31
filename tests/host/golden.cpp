@@ -1,6 +1,7 @@
 // Renders every preset with each effect setting (and once with drums) and
 // prints one hash per case. run.sh compares the output with golden_expected.txt,
 // so any change to the audio path shows up as a changed hash.
+#include "Feedback.h"
 #include "SynthEngine.h"
 #include <new>
 #include <stdio.h>
@@ -24,7 +25,8 @@ static void runCase(int preset, int effect, bool rhythm) {
   static HashingOutput out;
   out = HashingOutput{};
   alignas(SynthEngine) static unsigned char storage[sizeof(SynthEngine)];
-  SynthEngine &engine = *new (storage) SynthEngine(out);
+  static FeedbackSounds feedback;
+  SynthEngine &engine = *new (storage) SynthEngine(out, feedback);
   engine.begin();
   engine.setPreset(preset);
   if (effect < 0) {
@@ -36,7 +38,7 @@ static void runCase(int preset, int effect, bool rhythm) {
   if (rhythm) {
     engine.setTempoBpm(132);
     engine.setRhythmPattern(preset % 8);
-    engine.setRhythmPlaying(true);
+    engine.startRhythm(false);
   }
 
   const uint8_t notes[] = {48, 60, 64, 67, 72};

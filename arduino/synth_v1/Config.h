@@ -35,8 +35,6 @@ constexpr int8_t kMinOctaveShift = -2;
 constexpr int8_t kMaxOctaveShift = 2;
 constexpr int8_t kMinTranspose = -12;
 constexpr int8_t kMaxTranspose = 12;
-constexpr int8_t kMinEnvelopeOffset = -2;
-constexpr int8_t kMaxEnvelopeOffset = 2;
 
 constexpr uint8_t kBankCount = 3;
 constexpr uint8_t kInstrumentsPerBank = 8;
@@ -48,7 +46,6 @@ constexpr uint8_t kTempoMaxBpm = 240;
 constexpr uint8_t kTempoDefaultBpm = 120;
 
 constexpr int16_t kDefaultMasterVolume = 24576;
-constexpr int16_t kVolumeStep = 4096;
 constexpr int16_t kMinMasterVolume = 0;
 constexpr int16_t kMaxMasterVolume = 32767;
 }

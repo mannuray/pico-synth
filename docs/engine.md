@@ -197,6 +197,10 @@ At the default volume, playing 6-note chords along with Rock, Disco or March kee
 
 Choosing another pattern while playing switches at the next bar line, like a drum machine. A swung or humanized hit is queued, so the previous hit on that drum keeps ringing until the new one actually starts.
 
+## Controls
+
+`PerformanceController` turns button presses into state changes and commands; `ControlHold` adds hold-to-repeat (Tempo, Volume, Transpose: after 0.5 s, every 0.1 s) and the 2-second long press on Panic. Button presses are confirmed by `FeedbackSounds`: short sine blips (up, down, center, limit, blip, N blips) mixed dry after the effects and drums, scaled with the volume but kept audible near volume 0. In MIDI mode the engine renders only while a blip plays, with the music muted. See the README for the full button list.
+
 ## USB MIDI
 
 Auto-detects USB host connection via `MidiUSB.connected()`:
@@ -211,7 +215,7 @@ MIDI output includes:
 - Sustain pedal (CC64, values 127/0)
 - Volume (CC7)
 - Program change on preset select, using the preset's General MIDI program (`gmProgram`); no bank select, since GM Level 1 has no banks
-- Octave, transpose, effect, rhythm and envelope tweaks as CC 20-25 and 70-75
+- Octave, transpose, effect and rhythm settings as CC 20-25 and 111
 
 Device name: "Synth Pico MIDI"
 

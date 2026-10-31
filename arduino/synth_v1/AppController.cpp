@@ -44,10 +44,20 @@ void AppController::tick() {
     lastScanMs_ = now;
   }
 
+  controlHold_.update(
+      now,
+      [this](ControlType control, uint8_t value) {
+        performance_.handleControl(control, value);
+        return !performance_.hitLimit();  // stop repeating at a limit
+      },
+      [this](ControlType) { performance_.toggleFeedback(); });
+
   micLevel_ = levelInput_.readLevel();
 
-  // Skip audio rendering when the synth isn't an output (save CPU).
-  if (router_.synthActive()) {
+  // In MIDI mode the speaker plays only feedback sounds, and audio is
+  // rendered only while one is playing (saves CPU).
+  audioRenderer_.setMusicMuted(!router_.synthActive());
+  if (router_.synthActive() || audioRenderer_.feedbackActive()) {
     audioRenderer_.renderFrames(config::kAudioBlockFrames);
     cpuMeter_.addBusyUs(audioRenderer_.lastProcessingUs());
   }
@@ -105,8 +115,13 @@ void AppController::processMatrix(uint32_t nowMs) {
       if (performance_.handleKey(binding.value, event.pressed)) {
         statusIndicator_.flash(nowMs);
       }
-    } else if (binding.kind == BindingKind::Control && event.pressed) {
-      performance_.handleControl(binding.control, binding.value);
+    } else if (binding.kind == BindingKind::Control) {
+      if (event.pressed) {
+        performance_.handleControl(binding.control, binding.value);
+        controlHold_.press(binding.control, binding.value, nowMs);
+      } else {
+        controlHold_.release(binding.control);
+      }
     }
   }
 }

@@ -29,22 +29,21 @@ void SynthEventSink::handleCommand(const PerformanceCommand &command) {
       synth_.setEffectEnabled(command.value != 0);
       break;
     case CommandType::RhythmPlaying:
-      synth_.setRhythmPlaying(command.value != 0);
+      switch (command.value) {
+        case kRhythmStart:          synth_.startRhythm(false); break;
+        case kRhythmStartWithIntro: synth_.startRhythm(true); break;
+        case kRhythmStopWithEnding: synth_.stopRhythm(true); break;
+        default:                    synth_.stopRhythm(false); break;
+      }
       break;
     case CommandType::RhythmPattern:
       synth_.setRhythmPattern(static_cast<uint8_t>(command.value));
       break;
-    case CommandType::AttackOffset:
-      synth_.setAttackOffset(static_cast<int8_t>(command.value));
+    case CommandType::RhythmFill:
+      synth_.rhythmFill();
       break;
-    case CommandType::DecayOffset:
-      synth_.setDecayOffset(static_cast<int8_t>(command.value));
-      break;
-    case CommandType::SustainOffset:
-      synth_.setSustainOffset(static_cast<int8_t>(command.value));
-      break;
-    case CommandType::ReleaseOffset:
-      synth_.setReleaseOffset(static_cast<int8_t>(command.value));
+    case CommandType::RotaryFast:
+      synth_.setRotaryFast(command.value != 0);
       break;
     case CommandType::AllNotesOff:
       synth_.allNotesOff();

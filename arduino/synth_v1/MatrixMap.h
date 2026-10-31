@@ -49,9 +49,9 @@ constexpr MatrixBinding kMatrixBindings[9][8] = {
   },
   {
     buildNote(36), // R2 C0
-    buildControl(ControlType::AttackUp),  // R2 C1
-    buildControl(ControlType::DecayUp),   // R2 C2
-    buildControl(ControlType::SustainUp),  // R2 C3
+    buildControl(ControlType::RhythmFill),  // R2 C1
+    buildControl(ControlType::SyncStart),   // R2 C2
+    buildControl(ControlType::IntroEnding), // R2 C3
     buildNote(32), // R2 C4
     buildNote(33), // R2 C5
     buildNote(34), // R2 C6
@@ -90,7 +90,7 @@ constexpr MatrixBinding kMatrixBindings[9][8] = {
   {
     buildControl(ControlType::OctaveUp),      // R6 C0
     buildControl(ControlType::SustainToggle), // R6 C1
-    buildControl(ControlType::ReleaseUp),     // R6 C2
+    buildControl(ControlType::LeslieSpeed),   // R6 C2
     buildControl(ControlType::TempoUp),       // R6 C3
     buildControl(ControlType::VolumeUp),      // R6 C4
     buildControl(ControlType::BankDown),      // R6 C5

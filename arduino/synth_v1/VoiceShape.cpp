@@ -3,21 +3,12 @@
 
 #include <math.h>
 
-namespace {
-uint32_t applyOffset(uint32_t base, int8_t offset) {
-  if (offset == 0) return base;
-  if (offset > 0) return min<uint32_t>(20000, base << offset);
-  return max<uint32_t>(1, base >> (-offset));
-}
-}  // namespace
-
-VoiceShape computeVoiceShape(const Preset &preset, const EnvelopeOffsets &offsets) {
-  const uint32_t attackMs = applyOffset(max<uint32_t>(1, preset.attackMs), offsets.attack);
-  const uint32_t decayMs = applyOffset(max<uint32_t>(1, preset.decayMs), offsets.decay);
-  const uint32_t decay2Ms = preset.decay2Ms == 0 ? decayMs : applyOffset(preset.decay2Ms, offsets.decay);
-  const uint32_t releaseMs = applyOffset(max<uint32_t>(1, preset.releaseMs), offsets.release);
-  const int32_t sustain255 = (offsets.sustain == 0) ? static_cast<int32_t>(preset.sustainLevel) :
-      constrain(static_cast<int32_t>(preset.sustainLevel) + (offsets.sustain * 32), 0, 255);
+VoiceShape computeVoiceShape(const Preset &preset) {
+  const uint32_t attackMs = max<uint32_t>(1, preset.attackMs);
+  const uint32_t decayMs = max<uint32_t>(1, preset.decayMs);
+  const uint32_t decay2Ms = preset.decay2Ms == 0 ? decayMs : preset.decay2Ms;
+  const uint32_t releaseMs = max<uint32_t>(1, preset.releaseMs);
+  const int32_t sustain255 = preset.sustainLevel;
 
   VoiceShape shape;
   shape.attackRate = msToEnvRate(attackMs);

@@ -1,5 +1,6 @@
 #include "AppController.h"
 #include "ArduinoPlatform.h"
+#include "Feedback.h"
 #include "I2SAudioOutput.h"
 #include <MIDIUSB.h>
 #include "MatrixScanner.h"
@@ -15,11 +16,12 @@ BuiltinStatusLed statusLed;
 MatrixScanner matrixScanner;
 MicInput micInput;
 I2SAudioOutput audioOutput;
-SynthEngine synth(audioOutput);
+FeedbackSounds feedback;
+SynthEngine synth(audioOutput, feedback);
 SynthEventSink synthSink(synth);
 MidiEventSink midiSink;
 OutputRouter router(synthSink, midiSink, OutputMode::SynthOnly);
-PerformanceController performance(router, Serial);
+PerformanceController performance(router, feedback, Serial);
 AppController app(matrixScanner, micInput, synth, router, performance, hostLink, statusLed, systemClock, Serial);
 }  // namespace
 

@@ -87,20 +87,43 @@ Presets are listed in slot order within each bank (which physical button selects
 
 ## Controls
 
+The front-panel buttons are the toy keyboard's original ones, repurposed (toy label in brackets; see [docs/matrix-map.md](docs/matrix-map.md) for wiring).
+
 | Button | Function |
 |--------|----------|
-| Instrument 1-8 | Select preset in current bank |
-| Bank Up/Down | Switch between 3 banks |
-| Octave Up/Down | Shift keyboard +/- 2 octaves |
-| Transpose Up/Down | Shift +/- 12 semitones |
-| Volume Up/Down | Master volume |
-| Tempo Up/Down | Rhythm BPM |
-| Sustain | Hold pedal (sends MIDI CC64) |
-| Effect Select | Cycle through effects |
-| Effect On/Off | Toggle current effect |
-| Panic | All notes off |
-| Rhythm Start/Stop | Toggle rhythm engine |
-| Rhythm 1-8 | Select rhythm pattern (also recalls its usual tempo) |
+| Instrument 1-8 | Select preset in current bank (loads its default effect) |
+| Bank Down/Up (Dog/Frog) | Banks 1-3; stops at the ends |
+| Octave Down/Up (Duck/Bird) | Shift keyboard +/- 2 octaves |
+| Transpose Down/Up (Rec/Play) | Shift +/- 12 semitones |
+| Volume -/+ | 3 dB per press, down to silence |
+| Tempo -/+ | 5 BPM per press (40-240) |
+| Sustain (Drum/Animal) | Latching sustain on/off (MIDI CC64) |
+| Effect Select (Demo A) | Cycle Vibrato, Tremolo, Chorus, Reverb, Delay, Bitcrusher; also switches the effect on |
+| Effect On/Off (Demo B) | Toggle the effect |
+| Panic (Stop) | All notes off and sustain off; the rhythm keeps playing. **Hold 2 s** to switch the feedback sounds on/off |
+| Rhythm Start/Stop (Demo C) | Start/stop the drums |
+| Rhythm 1-8 | Select pattern; while stopped it also recalls the pattern's tempo, while playing your tempo is kept and the change happens at the next bar |
+| Fill | Play a fill on the next bar |
+| Sync Start | Arm: the rhythm starts with the first key you play |
+| Intro/Ending | Stopped: start with an intro fill. Playing: end with a fill and a crash |
+| Leslie | Organ presets: rotary speaker slow (chorale) / fast (tremolo), with the real motor's speed ramp |
+
+**Hold to repeat:** Tempo, Volume and Transpose repeat while held (after 0.5 s, 10 per second).
+
+### Feedback sounds
+
+The keyboard has no display, so button presses are confirmed with short, quiet sounds from the speaker (also in MIDI mode; never sent over MIDI):
+
+| Sound | Meaning |
+|---|---|
+| Rising two notes | Up / switched on |
+| Falling two notes | Down / switched off |
+| Double blip | Back to the default (octave 0, transpose 0) |
+| Low "bonk" | Can't go further (limit), or not available (Fill while stopped, Leslie on a non-organ preset) |
+| Single blip | Changed (volume: standalone, it plays at the new level; effect type) |
+| 1-3 blips | Bank number |
+
+Hold Panic for 2 seconds to switch them off or on (they are on again after power-up). Holding a repeating button at its limit gives one "bonk" and stops repeating.
 
 ## USB MIDI
 

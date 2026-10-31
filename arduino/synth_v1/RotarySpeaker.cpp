@@ -6,9 +6,15 @@ constexpr int32_t kBaseDelayQ8 = 24 << 8;  // ~0.5 ms, leaves room for the Doppl
 }
 
 void RotarySpeaker::configure(const OrganTraits *organ) {
-  const bool on = organ != nullptr && organ->rotaryHzX10 > 0;
-  step_ = on ? osc::hzToPhaseStep(organ->rotaryHzX10 / 10.0f) : 0;
+  const bool on = organ != nullptr && organ->rotarySlowHzX10 > 0;
+  slowStep_ = on ? osc::hzToPhaseStep(organ->rotarySlowHzX10 / 10.0f) : 0;
+  fastStep_ = on ? osc::hzToPhaseStep(organ->rotaryFastHzX10 / 10.0f) : 0;
   depth_ = on ? organ->rotaryDepth : 0;
+  step_ = fast_ ? fastStep_ : slowStep_;
+}
+
+void RotarySpeaker::setFast(bool fast) {
+  fast_ = fast;
 }
 
 int32_t RotarySpeaker::readDelayed(int32_t delayQ8) const {
@@ -22,6 +28,13 @@ int32_t RotarySpeaker::readDelayed(int32_t delayQ8) const {
 void RotarySpeaker::process(int32_t &left, int32_t &right) {
   buffer_[index_] = static_cast<int16_t>(constrain((left + right) >> 1, -32768, 32767));
 
+  // Ramp toward the target speed: time constant ~0.75 s up, ~1.5 s down.
+  const int32_t target = static_cast<int32_t>(fast_ ? fastStep_ : slowStep_);
+  const int32_t diff = target - static_cast<int32_t>(step_);
+  if (diff != 0) {
+    const int32_t change = diff > 0 ? (diff >> 15) : -((-diff) >> 16);
+    step_ = static_cast<uint32_t>(static_cast<int32_t>(step_) + (change != 0 ? change : diff));
+  }
   phase_ += step_;
   const int32_t toward = osc::sine(phase_);                 // horn velocity toward the listener
   const int32_t facing = osc::sine(phase_ + 0x40000000u);   // horn pointing at the listener

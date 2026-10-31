@@ -216,7 +216,7 @@ R6 C7 = Octave Down
 R6 C0 = Octave Up
 R6 C1 = Sustain
 
-R0 C5 = Panic
+R0 C5 = Panic (hold 2 s: feedback sounds on/off)
 R0 C6 = Effect Select
 R0 C7 = Effect On/Off
 R0 C0 = Rhythm Start/Stop
@@ -224,11 +224,11 @@ R0 C1 = Transpose Down
 R0 C2 = Transpose Up
 ```
 
-## Remaining Unmapped Matrix Positions
+The four remaining buttons (no toy label recorded) are rhythm controls:
 
 ```text
-R6 C2
-R2 C1
-R2 C2
-R2 C3
+R2 C1 = Fill
+R2 C2 = Sync Start
+R2 C3 = Intro/Ending
+R6 C2 = Leslie fast/slow
 ```

@@ -1,4 +1,5 @@
 // PerformanceController + OutputRouter: command order, preset defaults, routing, sustain end to end.
+#include "ControlHold.h"
 #include "PerformanceController.h"
 #include "OutputRouter.h"
 #include "SynthEventSink.h"
@@ -17,6 +18,20 @@ struct Rec : IEventSink {
 };
 std::string cmd(CommandType t, int v) { return "c" + std::to_string(int(t)) + "=" + std::to_string(v); }
 
+// Records feedback cues as names ("Up", "Count3", ...).
+struct RecFeedback : IFeedback {
+  std::vector<std::string> cues;
+  bool on = true;
+  void cue(FeedbackCue c, uint8_t n) override {
+    static const char *names[] = {"Up", "Down", "Center", "Limit", "Blip", "Count"};
+    cues.push_back(std::string(names[int(c)]) + (c == FeedbackCue::Count ? std::to_string(n) : ""));
+  }
+  void setEnabled(bool e) override { on = e; cues.push_back(e ? "Enabled" : "Disabled"); }
+  bool enabled() const override { return on; }
+  std::string last() const { return cues.empty() ? "" : cues.back(); }
+};
+static RecFeedback gCues;
+
 struct Silent : AudioOutput {
   int32_t peak = 0;
   bool begin(uint32_t, uint8_t) override { return true; }
@@ -27,7 +42,7 @@ int main() {
   Print log;
   // --- Sustain ordering: Sustain(0) must precede the held-over note-offs.
   {
-    Rec out; PerformanceController pc(out, log); pc.begin(); out.log.clear();
+    Rec out; PerformanceController pc(out, gCues, log); pc.begin(); out.log.clear();
     pc.handleControl(ControlType::SustainToggle, 0);
     pc.handleKey(0, true); pc.handleKey(0, false);
     CHECK(out.count("off48") == 0);                    // held by sustain
@@ -35,21 +50,15 @@ int main() {
     const int s = out.indexOf(cmd(CommandType::Sustain, 0)), n = out.indexOf("off48");
     CHECK(s >= 0 && n > s);
   }
-  // --- Preset change sets state defaults and sends them; ADSR offsets reset.
+  // --- Preset change sets state defaults and sends only what changed.
   {
-    Rec out; PerformanceController pc(out, log); pc.begin();
-    pc.handleControl(ControlType::AttackUp, 0);
-    CHECK(pc.performance().envelopeOffset(EnvelopeParam::Attack) == 1);
-    for (int i = 0; i < 2; ++i) pc.handleControl(ControlType::AttackUp, 0);
-    CHECK(pc.performance().envelopeOffset(EnvelopeParam::Attack) == -2);  // wrapped 2 -> -2
+    Rec out; PerformanceController pc(out, gCues, log); pc.begin();
     out.log.clear();
     pc.handleControl(ControlType::InstrumentSelect, 1);  // GrandPno (Reverb) -> EPiano (Chorus)
     CHECK(pc.performance().effect() == EffectType::Chorus && pc.performance().effectEnabled());
-    CHECK(pc.performance().envelopeOffset(EnvelopeParam::Attack) == 0);
     CHECK(out.count(cmd(CommandType::SelectPreset, 1)) == 1);
     CHECK(out.count(cmd(CommandType::Effect, int(EffectType::Chorus))) == 1);
-    CHECK(out.count(cmd(CommandType::AttackOffset, 0)) == 1);
-    CHECK(out.count(cmd(CommandType::DecayOffset, 0)) == 0);  // unchanged values aren't re-sent
+    CHECK(out.count(cmd(CommandType::EffectEnabled, 1)) == 0);  // unchanged values aren't re-sent
     // EffectSelect cycles from the preset's effect, not a stale one.
     pc.handleControl(ControlType::EffectSelect, 0);
     CHECK(pc.performance().effect() == EffectType::Reverb);
@@ -61,15 +70,15 @@ int main() {
   }
   // --- Volume reaches the synth at full resolution.
   {
-    Rec out; PerformanceController pc(out, log); pc.begin(); out.log.clear();
+    Rec out; PerformanceController pc(out, gCues, log); pc.begin(); out.log.clear();
     pc.handleControl(ControlType::VolumeDown, 0);
-    CHECK(out.count(cmd(CommandType::Volume, config::kDefaultMasterVolume - config::kVolumeStep)) == 1);
+    CHECK(out.count(cmd(CommandType::Volume, (config::kDefaultMasterVolume * 23198) >> 15)) == 1);  // -3 dB
   }
   // --- Router: deactivated sinks get AllNotesOff; sync goes to the new sink.
   {
     Rec synthRec, midiRec;
     OutputRouter router(synthRec, midiRec, OutputMode::SynthOnly);
-    PerformanceController pc(router, log); pc.begin();
+    PerformanceController pc(router, gCues, log); pc.begin();
     pc.handleControl(ControlType::VolumeUp, 0);
     CHECK(midiRec.log.empty());
     CHECK(router.setMode(OutputMode::MidiOnly));
@@ -82,10 +91,10 @@ int main() {
   }
   // --- End to end: controller -> router -> synth sink -> engine; sustain releases to silence.
   {
-    static Silent audio; static SynthEngine synth(audio); synth.begin();
+    static Silent audio; static SynthEngine synth(audio, gFeedback); synth.begin();
     SynthEventSink sink(synth); Rec m;
     OutputRouter router(sink, m, OutputMode::SynthOnly);
-    PerformanceController pc(router, log); pc.begin();
+    PerformanceController pc(router, gCues, log); pc.begin();
     pc.handleControl(ControlType::InstrumentSelect, 4);  // Accordion: sustained
     pc.handleControl(ControlType::SustainToggle, 0);
     pc.handleKey(12, true); for (int b = 0; b < 20; ++b) synth.renderFrames(64);
@@ -100,7 +109,7 @@ int main() {
   }
   // --- Re-pressing a key that still rings under sustain ends its old note first.
   {
-    Rec out; PerformanceController pc(out, log); pc.begin(); out.log.clear();
+    Rec out; PerformanceController pc(out, gCues, log); pc.begin(); out.log.clear();
     pc.handleControl(ControlType::SustainToggle, 0);
     pc.handleKey(0, true); pc.handleKey(0, false);      // note 48, held by sustain
     pc.handleControl(ControlType::OctaveUp, 0);
@@ -112,10 +121,126 @@ int main() {
   }
   // --- Choosing a rhythm recalls its usual tempo (Ballad = 72 BPM).
   {
-    Rec out; PerformanceController pc(out, log); pc.begin(); out.log.clear();
+    Rec out; PerformanceController pc(out, gCues, log); pc.begin(); out.log.clear();
     pc.handleControl(ControlType::RhythmSelect, 2);
     CHECK(pc.performance().tempoBpm() == 72);
     CHECK(out.count(cmd(CommandType::Tempo, 72)) == 1);
+  }
+  // --- Volume steps in 3 dB, reaches silence, comes back, and stops at full.
+  {
+    Rec out; PerformanceController pc(out, gCues, log); pc.begin();
+    int presses = 0;
+    while (pc.performance().masterVolume() > 0 && presses < 30) { pc.handleControl(ControlType::VolumeDown, 0); ++presses; }
+    CHECK(pc.performance().masterVolume() == 0 && presses >= 9 && presses <= 12);  // ~-30 dB range
+    pc.handleControl(ControlType::VolumeDown, 0);
+    CHECK(gCues.last() == "Limit");
+    pc.handleControl(ControlType::VolumeUp, 0);
+    CHECK(pc.performance().masterVolume() > 0 && gCues.last() == "Blip");
+    for (int i = 0; i < 20; ++i) pc.handleControl(ControlType::VolumeUp, 0);
+    CHECK(pc.performance().masterVolume() == config::kMaxMasterVolume && gCues.last() == "Limit");
+  }
+  // --- Feedback cues for stepped values.
+  {
+    Rec out; PerformanceController pc(out, gCues, log); pc.begin();
+    pc.handleControl(ControlType::OctaveUp, 0);   CHECK(gCues.last() == "Up");
+    pc.handleControl(ControlType::OctaveDown, 0); CHECK(gCues.last() == "Center");
+    pc.handleControl(ControlType::OctaveDown, 0); CHECK(gCues.last() == "Down");
+    pc.handleControl(ControlType::OctaveDown, 0); CHECK(gCues.last() == "Down");
+    pc.handleControl(ControlType::OctaveDown, 0); CHECK(gCues.last() == "Limit");  // -2 is the floor
+    pc.handleControl(ControlType::BankUp, 0);     CHECK(gCues.last() == "Count2");
+    pc.handleControl(ControlType::BankUp, 0);     CHECK(gCues.last() == "Count3");
+    pc.handleControl(ControlType::BankUp, 0);     CHECK(gCues.last() == "Limit");
+    pc.handleControl(ControlType::SustainToggle, 0); CHECK(gCues.last() == "Up");
+    pc.handleControl(ControlType::SustainToggle, 0); CHECK(gCues.last() == "Down");
+    pc.toggleFeedback(); CHECK(gCues.last() == "Disabled");
+    pc.toggleFeedback(); CHECK(gCues.last() == "Enabled");
+  }
+  // --- Effect Select also switches the effect on (JazzOrg starts with it off).
+  {
+    Rec out; PerformanceController pc(out, gCues, log); pc.begin();
+    pc.handleControl(ControlType::InstrumentSelect, 2);  // JazzOrg
+    CHECK(!pc.performance().effectEnabled());
+    out.log.clear();
+    pc.handleControl(ControlType::EffectSelect, 0);
+    CHECK(pc.performance().effectEnabled() && out.count(cmd(CommandType::EffectEnabled, 1)) == 1);
+  }
+  // --- Panic also releases sustain, and leaves the rhythm running.
+  {
+    Rec out; PerformanceController pc(out, gCues, log); pc.begin();
+    pc.handleControl(ControlType::RhythmStartStop, 0);
+    pc.handleControl(ControlType::SustainToggle, 0);
+    out.log.clear();
+    pc.handleControl(ControlType::Panic, 0);
+    CHECK(out.indexOf(cmd(CommandType::AllNotesOff, 0)) < out.indexOf(cmd(CommandType::Sustain, 0)));
+    CHECK(!pc.performance().sustainEnabled() && pc.performance().rhythmPlaying());
+  }
+  // --- Rhythm select keeps your tempo while playing; recalls the pattern's when stopped.
+  {
+    Rec out; PerformanceController pc(out, gCues, log); pc.begin();
+    pc.handleControl(ControlType::RhythmStartStop, 0);
+    pc.handleControl(ControlType::TempoUp, 0);           // 105
+    pc.handleControl(ControlType::RhythmSelect, 2);       // Ballad (72) while playing
+    CHECK(pc.performance().tempoBpm() == 105);
+    pc.handleControl(ControlType::RhythmStartStop, 0);    // stop
+    pc.handleControl(ControlType::RhythmSelect, 3);       // Disco while stopped
+    CHECK(pc.performance().tempoBpm() == 120);
+  }
+  // --- Fill, Intro/Ending, Sync Start.
+  {
+    Rec out; PerformanceController pc(out, gCues, log); pc.begin(); out.log.clear();
+    pc.handleControl(ControlType::RhythmFill, 0);
+    CHECK(gCues.last() == "Limit" && out.log.empty());   // nothing to fill while stopped
+    pc.handleControl(ControlType::IntroEnding, 0);
+    CHECK(pc.performance().rhythmPlaying() && out.count(cmd(CommandType::RhythmPlaying, kRhythmStartWithIntro)) == 1);
+    pc.handleControl(ControlType::RhythmFill, 0);
+    CHECK(out.count(cmd(CommandType::RhythmFill, 0)) == 1);
+    pc.handleControl(ControlType::IntroEnding, 0);
+    CHECK(!pc.performance().rhythmPlaying() && out.count(cmd(CommandType::RhythmPlaying, kRhythmStopWithEnding)) == 1);
+
+    out.log.clear();
+    pc.handleControl(ControlType::SyncStart, 0);
+    CHECK(pc.performance().syncStartArmed() && gCues.last() == "Up" && out.log.empty());
+    pc.handleKey(5, true);                                // first key starts the rhythm, before the note
+    CHECK(pc.performance().rhythmPlaying() && !pc.performance().syncStartArmed());
+    CHECK(out.indexOf(cmd(CommandType::RhythmPlaying, kRhythmStart)) == 0 && out.indexOf("on53") == 1);
+    pc.handleKey(5, false);
+    pc.handleKey(7, true);                                // later keys don't restart it
+    CHECK(out.count(cmd(CommandType::RhythmPlaying, kRhythmStart)) == 1);
+  }
+  // --- Leslie speed: only on organ presets.
+  {
+    Rec out; PerformanceController pc(out, gCues, log); pc.begin(); out.log.clear();
+    pc.handleControl(ControlType::LeslieSpeed, 0);        // GrandPno: no rotary
+    CHECK(gCues.last() == "Limit" && out.log.empty());
+    pc.handleControl(ControlType::InstrumentSelect, 2);   // JazzOrg
+    pc.handleControl(ControlType::LeslieSpeed, 0);
+    CHECK(pc.performance().rotaryFast() && out.count(cmd(CommandType::RotaryFast, 1)) == 1 && gCues.last() == "Up");
+    pc.handleControl(ControlType::LeslieSpeed, 0);
+    CHECK(!pc.performance().rotaryFast() && gCues.last() == "Down");
+  }
+  // --- Hold: Tempo/Volume/Transpose repeat after 0.5 s every 0.1 s; Panic long press fires once at 2 s.
+  {
+    ControlHold hold;
+    int repeats = 0, longPresses = 0;
+    auto update = [&](uint32_t ms) {
+      hold.update(ms, [&](ControlType, uint8_t) { ++repeats; return true; }, [&](ControlType) { ++longPresses; });
+    };
+    hold.press(ControlType::TempoUp, 0, 1000);
+    update(1499); CHECK(repeats == 0);
+    update(1500); CHECK(repeats == 1);
+    update(1800); CHECK(repeats == 4);
+    hold.release(ControlType::TempoUp);
+    update(3000); CHECK(repeats == 4);
+    hold.press(ControlType::OctaveUp, 0, 4000);   // no repeat for octave
+    update(6000); CHECK(repeats == 4 && longPresses == 0);
+    hold.press(ControlType::Panic, 0, 7000);
+    update(8999); CHECK(longPresses == 0);
+    update(9000); update(9500); CHECK(longPresses == 1 && repeats == 4);
+    // Repeating stops once the callback reports a limit.
+    int limited = 0;
+    hold.press(ControlType::VolumeUp, 0, 10000);
+    hold.update(12000, [&](ControlType, uint8_t) { return ++limited < 3; }, [](ControlType) {});
+    CHECK(limited == 3);
   }
   return finish("control_test");
 }

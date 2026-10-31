@@ -81,14 +81,18 @@ int16_t PerformanceState::masterVolume() const {
   return masterVolume_;
 }
 
-void PerformanceState::setEnvelopeOffset(EnvelopeParam param, int8_t offset) {
-  envelopeOffsets_[static_cast<uint8_t>(param)] = constrain(offset, config::kMinEnvelopeOffset, config::kMaxEnvelopeOffset);
+void PerformanceState::setSyncStartArmed(bool armed) {
+  syncStartArmed_ = armed;
 }
 
-int8_t PerformanceState::envelopeOffset(EnvelopeParam param) const {
-  return envelopeOffsets_[static_cast<uint8_t>(param)];
+bool PerformanceState::syncStartArmed() const {
+  return syncStartArmed_;
 }
 
-void PerformanceState::resetEnvelopeOffsets() {
-  memset(envelopeOffsets_, 0, sizeof(envelopeOffsets_));
+void PerformanceState::setRotaryFast(bool fast) {
+  rotaryFast_ = fast;
+}
+
+bool PerformanceState::rotaryFast() const {
+  return rotaryFast_;
 }

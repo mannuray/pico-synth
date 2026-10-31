@@ -12,15 +12,21 @@ enum class CommandType : uint8_t {
   Tempo,           // BPM, config::kTempoMinBpm..kTempoMaxBpm
   Effect,          // EffectType
   EffectEnabled,   // 0 = off, 1 = on
-  RhythmPlaying,   // 0 = stopped, 1 = playing
+  RhythmPlaying,   // a RhythmTransport value
   RhythmPattern,   // pattern index
   OctaveShift,     // octaves, config::kMinOctaveShift..kMaxOctaveShift
   Transpose,       // semitones, config::kMinTranspose..kMaxTranspose
-  AttackOffset,    // envelope offset, config::kMinEnvelopeOffset..kMaxEnvelopeOffset
-  DecayOffset,     // envelope offset, same range
-  SustainOffset,   // envelope offset, same range
-  ReleaseOffset,   // envelope offset, same range
+  RhythmFill,      // value unused: play a fill on the next bar
+  RotaryFast,      // 0 = Leslie slow (chorale), 1 = fast (tremolo)
   AllNotesOff      // value unused
+};
+
+// Values of CommandType::RhythmPlaying.
+enum RhythmTransport : int16_t {
+  kRhythmStop = 0,
+  kRhythmStart = 1,
+  kRhythmStartWithIntro = 2,   // a fill bar first, then the groove
+  kRhythmStopWithEnding = 3,   // finish with a fill bar and a crash
 };
 
 struct PerformanceCommand {

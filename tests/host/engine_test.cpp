@@ -24,7 +24,7 @@ static void render(SynthEngine &e, int blocks, size_t frames = 64) {
 // A request longer than the 64-frame scratch buffers renders identically to 64-frame calls.
 static void chunkedRenderMatches() {
   Capture a, b;
-  SynthEngine ea(a), eb(b);
+  SynthEngine ea(a, gFeedback), eb(b, gFeedback);
   for (SynthEngine *e : {&ea, &eb}) {
     e->begin();
     e->setPreset(4);
@@ -40,18 +40,19 @@ static void chunkedRenderMatches() {
 }
 
 // Rotation rate measured from the left/right balance swings, with no effect enabled.
-static double measuredRotaryHz(uint8_t preset) {
+static double measuredRotaryHz(uint8_t preset, bool fast) {
   Capture out;
-  SynthEngine engine(out);
+  SynthEngine engine(out, gFeedback);
   engine.begin();
   engine.setPreset(preset);
   engine.setEffectEnabled(false);
+  engine.setRotaryFast(fast);
   engine.noteOn(60);
-  render(engine, 44100 * 4 / 64);
+  render(engine, 44100 * 8 / 64);
 
   const size_t window = 441;  // 10 ms
   std::vector<double> balance;
-  for (size_t i = 22050; i + window <= out.left.size(); i += window) {
+  for (size_t i = 44100 * 4; i + window <= out.left.size(); i += window) {  // after the speed ramp
     double l = 0, r = 0;
     for (size_t k = 0; k < window; ++k) { l += fabs(out.left[i + k]); r += fabs(out.right[i + k]); }
     balance.push_back((l - r) / (l + r + 1));
@@ -59,19 +60,32 @@ static double measuredRotaryHz(uint8_t preset) {
   double mean = 0;
   for (double v : balance) mean += v;
   mean /= balance.size();
-  int crossings = 0;
-  for (size_t i = 1; i < balance.size(); ++i) crossings += ((balance[i - 1] < mean) != (balance[i] < mean));
-  return crossings / 2.0 / (balance.size() * 0.01);
+  // Strongest frequency of the balance swing (direct DFT scan, 0.3-10 Hz).
+  double bestHz = 0, bestPower = 0;
+  for (double hz = 0.3; hz <= 10.0; hz += 0.02) {
+    double re = 0, im = 0;
+    for (size_t k = 0; k < balance.size(); ++k) {
+      const double t = k * 0.01;
+      re += (balance[k] - mean) * cos(2 * M_PI * hz * t);
+      im += (balance[k] - mean) * sin(2 * M_PI * hz * t);
+    }
+    if (re * re + im * im > bestPower) {
+      bestPower = re * re + im * im;
+      bestHz = hz;
+    }
+  }
+  return bestHz;
 }
 
 static void rotarySpinsAtPresetSpeed() {
-  CHECK(fabs(measuredRotaryHz(2) - 6.7) < 0.5);  // JazzOrg: Leslie fast ("tremolo") speed
+  CHECK(fabs(measuredRotaryHz(2, false) - 0.8) < 0.2);  // JazzOrg: Leslie slow ("chorale")
+  CHECK(fabs(measuredRotaryHz(2, true) - 6.7) < 0.5);   // and fast ("tremolo")
 }
 
 // Frequency of the strongest spectral peak over one second of a held note.
 static double measuredPitchHz(uint8_t preset, uint8_t note) {
   Capture out;
-  SynthEngine engine(out);
+  SynthEngine engine(out, gFeedback);
   engine.begin();
   engine.setPreset(preset);
   engine.setEffectEnabled(false);
@@ -92,7 +106,7 @@ static void notesPlayAtMidiPitch() {
 static void zeroVolumeIsSilent() {
   for (uint8_t preset = 0; preset < config::kPresetCount; ++preset) {
     Capture out;
-    SynthEngine engine(out);
+    SynthEngine engine(out, gFeedback);
     engine.begin();
     engine.setPreset(preset);
     engine.setEffect(presets::at(preset).defaultEffect);
@@ -110,13 +124,13 @@ static void zeroVolumeIsSilent() {
 static void fullVolumeChordsStayInRange() {
   for (uint8_t preset = 0; preset < config::kPresetCount; ++preset) {
     Capture out;
-    SynthEngine engine(out);
+    SynthEngine engine(out, gFeedback);
     engine.begin();
     engine.setPreset(preset);
     engine.setEffect(presets::at(preset).defaultEffect);
     engine.setEffectEnabled(true);
     engine.setMasterVolume(config::kMaxMasterVolume);
-    engine.setRhythmPlaying(true);
+    engine.startRhythm(false);
     for (uint8_t note : {48, 55, 60, 64, 67, 72, 76, 84}) engine.noteOn(note);
     render(engine, 1000);
     for (uint8_t note : {48, 55, 60, 64, 67, 72, 76, 84}) engine.noteOff(note);
@@ -128,7 +142,7 @@ static void fullVolumeChordsStayInRange() {
 // With all voices held, new notes steal the oldest note, not always voice 0.
 static void stealsOldestNote() {
   Capture out;
-  SynthEngine engine(out);
+  SynthEngine engine(out, gFeedback);
   engine.begin();
   engine.setPreset(19);  // SubBass: sustained, no effect tail
   engine.setEffectEnabled(false);
@@ -154,7 +168,7 @@ static void stealsOldestNote() {
 static void chordsHaveHeadroom() {
   for (uint8_t preset = 0; preset < config::kPresetCount; ++preset) {
     Capture out;
-    SynthEngine engine(out);
+    SynthEngine engine(out, gFeedback);
     engine.begin();
     engine.setPreset(preset);
     engine.setEffect(presets::at(preset).defaultEffect);
@@ -171,7 +185,7 @@ static void chordsHaveHeadroom() {
 static void allNotesRenderSafely() {
   for (uint8_t preset = 0; preset < config::kPresetCount; ++preset) {
     Capture out;
-    SynthEngine engine(out);
+    SynthEngine engine(out, gFeedback);
     engine.begin();
     engine.setPreset(preset);
     engine.setMasterVolume(config::kMaxMasterVolume);
@@ -189,14 +203,14 @@ static void allNotesRenderSafely() {
 static void drumsStayDry() {
   auto renderDrums = [](uint8_t preset, bool effectOn) {
     Capture out;
-    SynthEngine engine(out);
+    SynthEngine engine(out, gFeedback);
     engine.begin();
     engine.setPreset(preset);
     engine.setEffect(presets::at(preset).defaultEffect);
     engine.setEffectEnabled(effectOn);
     engine.setTempoBpm(112);
     engine.setRhythmPattern(1);
-    engine.setRhythmPlaying(true);
+    engine.startRhythm(false);
     render(engine, 44100 * 3 / 64);
     return out.left;
   };
@@ -217,14 +231,14 @@ static void chordsWithDrumsHaveHeadroom() {
   for (uint8_t preset : {0, 2, 10, 14}) {
     for (uint8_t pattern : {1, 3, 7}) {
       Capture out;
-      SynthEngine engine(out);
+      SynthEngine engine(out, gFeedback);
       engine.begin();
       engine.setPreset(preset);
       engine.setEffect(presets::at(preset).defaultEffect);
       engine.setEffectEnabled(presets::at(preset).effectEnabled);
       engine.setTempoBpm(rhythmPatternAt(pattern).defaultBpm);
       engine.setRhythmPattern(pattern);
-      engine.setRhythmPlaying(true);
+      engine.startRhythm(false);
       for (uint8_t note : {48, 55, 60, 64, 67, 72}) engine.noteOn(note);
       render(engine, 44100 * 4 / 64);
       size_t over = 0;
@@ -232,6 +246,26 @@ static void chordsWithDrumsHaveHeadroom() {
       CHECK(over * 1000 < out.left.size());  // under 0.1%
     }
   }
+}
+
+// Music muted (MIDI mode): notes and drums are silent, feedback blips still play.
+static void mutedEnginePlaysOnlyFeedback() {
+  Capture out;
+  FeedbackSounds feedback;
+  SynthEngine engine(out, feedback);
+  engine.begin();
+  engine.startRhythm(false);
+  engine.noteOn(60);
+  engine.setMusicMuted(true);
+  render(engine, 100);
+  CHECK(out.peakSince(0) == 0);
+  feedback.cue(FeedbackCue::Up);
+  CHECK(engine.feedbackActive());
+  const size_t mark = out.left.size();
+  render(engine, 20);
+  CHECK(out.peakSince(mark) > 300);
+  render(engine, 100);
+  CHECK(!engine.feedbackActive());
 }
 
 int main() {
@@ -244,6 +278,7 @@ int main() {
   allNotesRenderSafely();
   drumsStayDry();
   chordsWithDrumsHaveHeadroom();
+  mutedEnginePlaysOnlyFeedback();
   stealsOldestNote();
   return finish("engine_test");
 }

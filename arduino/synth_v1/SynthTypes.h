@@ -27,7 +27,8 @@ struct OrganTraits {
   uint16_t percussionDecayMs = 0;   // Hammond: ~200 ms fast, ~1000 ms slow
   int16_t percussionLevel = 0;      // peak percussion amplitude (0..32767)
   int16_t clickLevel = 0;           // key-click noise burst amplitude (0..32767)
-  uint8_t rotaryHzX10 = 0;          // Leslie horn speed x10 (8 = chorale, 67 = tremolo); 0 = no rotary
+  uint8_t rotarySlowHzX10 = 0;      // Leslie "chorale" horn speed x10 (~8 = 0.8 Hz); 0 = no rotary
+  uint8_t rotaryFastHzX10 = 0;      // Leslie "tremolo" horn speed x10 (~67 = 6.7 Hz)
   uint8_t rotaryDepth = 0;          // rotary amplitude/Doppler depth, 0..255
 };
 

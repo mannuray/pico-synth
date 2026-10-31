@@ -6,6 +6,7 @@
 #include <MIDIUSB.h>
 #include "check.h"
 #include <string>
+#include <vector>
 MidiUsbStub MidiUSB;
 
 std::string wire() {  // "B0 07 4F | C0 01 00 | ..." then clear
@@ -13,20 +14,36 @@ std::string wire() {  // "B0 07 4F | C0 01 00 | ..." then clear
   for (auto &p : MidiUSB.sent) { snprintf(buf, sizeof buf, "%s%02X %02X %02X", s.empty() ? "" : " | ", p.byte1, p.byte2, p.byte3); s += buf; }
   MidiUSB.sent.clear(); return s;
 }
-struct NoKeys : IKeyMatrix { bool poll(KeyMatrixEvent &) override { return false; } };
+// Key matrix fake: the test queues button presses/releases.
+struct ScriptedKeys : IKeyMatrix {
+  std::vector<KeyMatrixEvent> queue;
+  void push(uint8_t row, uint8_t col, bool pressed) { queue.push_back({row, col, pressed}); }
+  bool poll(KeyMatrixEvent &e) override {
+    if (queue.empty()) return false;
+    e = queue.front();
+    queue.erase(queue.begin());
+    return true;
+  }
+};
 struct Level : ILevelInput { uint16_t readLevel() override { return 0; } };
-struct Renderer : IAudioRenderer { int calls = 0; void renderFrames(size_t) override { ++calls; } uint32_t lastProcessingUs() const override { return 0; } };
+struct Renderer : IAudioRenderer {
+  int calls = 0; bool muted = false; bool feedback = false;
+  void renderFrames(size_t) override { ++calls; }
+  uint32_t lastProcessingUs() const override { return 0; }
+  void setMusicMuted(bool m) override { muted = m; }
+  bool feedbackActive() const override { return feedback; }
+};
 struct Host : IHostLink { bool up = false; bool isConnected() override { return up; } };
 struct Led : IStatusIndicator { void flash(uint32_t) override {} void update(uint32_t) override {} };
 struct Clock : IClock { uint32_t ms = 0; uint32_t nowMs() const override { return ms; } uint32_t nowUs() const override { return ms * 1000; } };
 struct Silent : AudioOutput { bool begin(uint32_t, uint8_t) override { return true; } void writeStereo(int16_t, int16_t) override {} };
 
 int main() {
-  Print log; Silent audio; SynthEngine synth(audio); synth.begin();
+  Print log; Silent audio; SynthEngine synth(audio, gFeedback); synth.begin();
   SynthEventSink synthSink(synth); MidiEventSink midiSink;
   OutputRouter router(synthSink, midiSink, OutputMode::SynthOnly);
-  PerformanceController perf(router, log);
-  NoKeys keys; Level level; Renderer renderer; Host host; Led led; Clock clock;
+  PerformanceController perf(router, gFeedback, log);
+  ScriptedKeys keys; Level level; Renderer renderer; Host host; Led led; Clock clock;
   AppController app(keys, level, renderer, router, perf, host, led, clock, log);
 
   app.begin();                         // boot without host
@@ -44,7 +61,11 @@ int main() {
   clock.ms += 1; app.tick();           // connected for the full debounce -> MidiOnly
   CHECK(router.mode() == OutputMode::MidiOnly);
   CHECK(wire() == "");                 // nothing sent to the host on connect
-  CHECK(renderer.calls == rendersBefore);  // no rendering in MidiOnly
+  CHECK(renderer.calls == rendersBefore);  // no rendering in MidiOnly...
+  CHECK(renderer.muted);
+  renderer.feedback = true; app.tick();    // ...except while a feedback sound plays
+  CHECK(renderer.calls == rendersBefore + 1);
+  renderer.feedback = false;
 
   perf.handleControl(ControlType::InstrumentSelect, 1);   // GrandPno (Reverb) -> EPiano (Chorus)
   CHECK(wire() == "C0 04 00 | B0 17 02");                 // GM program 5 "Electric Piano 1", CC23=Chorus
@@ -53,13 +74,13 @@ int main() {
   perf.handleControl(ControlType::BankUp, 0);             // -> bank 1 slot 1 Cello (Reverb)
   CHECK(wire() == "C0 2A 00 | B0 17 03");                 // no bank select; GM program 43 "Cello"
   perf.handleControl(ControlType::VolumeDown, 0);
-  CHECK(wire() == "B0 07 4F");                            // map(20480) = 79, as HEAD
+  CHECK(wire() == "B0 07 43");                            // -3 dB step: 17398 -> CC7 67
   perf.handleControl(ControlType::OctaveUp, 0);
   CHECK(wire() == "B0 15 03");
   perf.handleControl(ControlType::TransposeDown, 0);
   CHECK(wire() == "B0 16 0B");
-  perf.handleControl(ControlType::AttackUp, 0);
-  CHECK(wire() == "B0 49 03");
+  perf.handleControl(ControlType::LeslieSpeed, 0);        // no rotary on Cello: nothing sent
+  CHECK(wire() == "");
   perf.handleControl(ControlType::RhythmStartStop, 0);
   CHECK(wire() == "B0 6F 01");
   for (int i = 0; i < 30; ++i) perf.handleControl(ControlType::TempoUp, 0);  // clamps at 240
@@ -79,6 +100,23 @@ int main() {
   clock.ms += config::kModeSwitchDebounceMs; app.tick();  // -> SynthOnly, synth resynced
   CHECK(router.mode() == OutputMode::SynthOnly);
   CHECK(wire() == "B0 78 00 | B0 7B 00");                 // MIDI sink told all-notes-off (no-op when unplugged)
-  CHECK(renderer.calls == rendersBefore + 1);
+  CHECK(renderer.calls == rendersBefore + 2 && !renderer.muted);
+  // Holding buttons, through the real matrix -> AppController path.
+  auto runFor = [&](uint32_t ms) { for (uint32_t t = 0; t < ms; t += 10) { clock.ms += 10; app.tick(); } };
+  const int tempoBefore = perf.performance().tempoBpm();
+  CHECK(tempoBefore == 240);               // raised to the maximum earlier in this test
+  keys.push(0, 3, true);                   // R0 C3 = Tempo -
+  runFor(1000);
+  keys.push(0, 3, false);
+  runFor(500);                             // released: no more repeats
+  // Press (registered on the first 10 ms tick) + repeats at 0.5-0.9 s after it = 6 steps.
+  CHECK(perf.performance().tempoBpm() == tempoBefore - 6 * 5);
+
+  CHECK(gFeedback.enabled());
+  keys.push(0, 5, true);                   // R0 C5 = Panic, held 2 s
+  runFor(2100);
+  keys.push(0, 5, false);
+  runFor(50);
+  CHECK(!gFeedback.enabled());             // feedback sounds switched off
   return finish("midi_test");
 }

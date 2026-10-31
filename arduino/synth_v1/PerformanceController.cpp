@@ -48,7 +48,7 @@ void PerformanceController::handleControl(ControlType control, uint8_t value) {
     case ControlType::EffectToggle:     toggleEffect(); break;
     case ControlType::RhythmStartStop:  toggleRhythm(); break;
     case ControlType::RhythmSelect:     selectRhythm(value); break;
-    case ControlType::RhythmFill:       rhythmFill(); break;
+    case ControlType::InstrumentBank:   toggleBank(); break;
     case ControlType::IntroEnding:      introOrEnding(); break;
     case ControlType::Panic:            panic(); break;
     case ControlType::None:             break;
@@ -122,13 +122,24 @@ void PerformanceController::releaseSustainedNotes() {
 
 // Pressing the organ's button again switches its Leslie between slow and fast.
 void PerformanceController::selectInstrument(uint8_t slot) {
-  if (slot == performance_.instrumentSlot() && presetHasRotary()) {
+  const bool samePreset = slot == performance_.instrumentSlot() &&
+                          performance_.instrumentBank() == performance_.activePresetIndex() / config::kSlotsPerBank;
+  if (samePreset && presetHasRotary()) {
     toggleLeslie();
     return;
   }
   performance_.setInstrumentSlot(slot);
   applyActivePreset();
   logPreset();
+}
+
+// Arms the other bank for the next tone button; the sound doesn't change yet.
+// One blip = bank 1, two = bank 2.
+void PerformanceController::toggleBank() {
+  performance_.setInstrumentBank((performance_.instrumentBank() + 1) % config::kBankCount);
+  feedback_.cue(performance_.instrumentBank() == 0 ? FeedbackCue::Blip : FeedbackCue::Center);
+  log_.print("bank=");
+  log_.println(performance_.instrumentBank() + 1);
 }
 
 void PerformanceController::stepOctave(int8_t direction) {
@@ -209,8 +220,13 @@ void PerformanceController::toggleRhythm() {
 }
 
 // Recalls the pattern's usual tempo only while stopped: when switching
-// patterns mid-song, the tempo you're playing at is kept.
+// patterns mid-song, the tempo you're playing at is kept. Pressing the
+// current pattern's button again is Fill.
 void PerformanceController::selectRhythm(uint8_t pattern) {
+  if (pattern == performance_.rhythmPattern()) {
+    rhythmFill();
+    return;
+  }
   performance_.setRhythmPattern(pattern);
   send(CommandType::RhythmPattern, performance_.rhythmPattern());
   if (!performance_.rhythmPlaying()) {

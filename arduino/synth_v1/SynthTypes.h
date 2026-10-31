@@ -7,7 +7,6 @@ enum class Waveform : uint8_t {
   Saw,
   Square,
   Sine,
-  Wavetable,
   FM,
   Sample      // recorded instrument samples (Preset::sampleSet)
 };
@@ -40,8 +39,7 @@ struct Preset {
   uint8_t gmProgram = 0;            // General MIDI program sent over USB MIDI (0-127 = GM 1-128)
 
   // Oscillator
-  Waveform waveform = Waveform::Wavetable;
-  uint8_t wavetableIndex = 0;
+  Waveform waveform = Waveform::Sample;
   uint8_t sampleSet = 0;            // Waveform::Sample: instrument in SampleData.h
   int8_t octave = 0;                // plays this many octaves away from the key's note
   bool unison = false;              // three detuned oscillators
@@ -67,8 +65,7 @@ struct Preset {
   uint16_t releaseMs = 200;
 
   // Tone: resonant low-pass filter plus a "spectral envelope" that starts bright
-  // and settles to modSustain. It opens the filter and, for wavetables, moves
-  // from the brightest frame toward the darkest.
+  // and settles to modSustain. It opens the filter (and drives FM depth).
   uint16_t brightness = 128;
   uint8_t resonance = 40;
   uint8_t modulationDepth = 0;      // how far the spectral envelope opens the filter

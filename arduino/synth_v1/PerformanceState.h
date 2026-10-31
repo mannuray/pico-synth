@@ -8,8 +8,14 @@
 // Single source of truth for performance settings. Output sinks only mirror it.
 class PerformanceState {
 public:
+  // The bank the tone buttons choose from next. Changing it doesn't change
+  // the sound until a tone button is pressed.
+  void setInstrumentBank(uint8_t bank);
+  uint8_t instrumentBank() const;
+
+  // Tone button `slot` (0-7) in the current bank becomes the active preset.
   void setInstrumentSlot(uint8_t slot);
-  uint8_t instrumentSlot() const;
+  uint8_t instrumentSlot() const;  // tone button of the active preset
 
   uint8_t activePresetIndex() const;
 
@@ -43,7 +49,8 @@ public:
   bool rotaryFast() const;
 
 private:
-  uint8_t instrumentSlot_ = 0;
+  uint8_t instrumentBank_ = 0;
+  uint8_t activePreset_ = 0;
   EffectType effect_ = EffectType::Vibrato;
   bool effectEnabled_ = false;
   bool sustainEnabled_ = false;

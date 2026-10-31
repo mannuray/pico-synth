@@ -26,12 +26,11 @@ Specifications:
 
 Supported waveform generators:
 
-- **Sample** — recorded instrument (see below); all 8 presets use it
+- **Sample** — recorded instrument (see below); all 16 presets use it
 - **Triangle** — simple phase-based
 - **Saw** — PolyBLEP anti-aliased
 - **Square** — PolyBLEP anti-aliased (both edges)
-- **Sine** — 512-sample table with linear interpolation (stored in flash)
-- **Wavetable** — multi-frame crossfading (4 frames, 512 samples each, stored in flash)
+- **Sine** — 512-sample table with linear interpolation (built in RAM at startup)
 - **FM** — 3-pair Algorithm 5 style (body + richness + tine/bell)
 
 ### Sampled Instruments
@@ -39,37 +38,6 @@ Supported waveform generators:
 Each preset names a sample set (`Preset::sampleSet`): up to 6 key zones of FluidR3_GM recordings, each with a key range, root key, tuning and loop (`SampleSet.h`), cut by `tools/extract_sf2.py` and stored in flash at 22.05 kHz. A note picks the zone covering its key (after the preset octave) and plays it at `2^((note - root + tune/100) / 12)` times speed, a Q20.12 position stepping through the data with linear interpolation. Vibrato and the effects' pitch modulation scale that step, as they do an oscillator's. After the loop end it wraps to the loop start; one guard sample after the data repeats the loop start, so interpolation never reads past the zone.
 
 The recordings carry the attack and timbre; the preset's envelope and filter shape the rest (a long sustained loop becomes a piano's two-stage decay). Pitch was checked against FluidSynth rendering the same SoundFont (within 5 cents). Two FluidR3 details: its Drawbar Organ is pitched two octaves low (16' foot), so the extractor retunes it to the key (`TUNE_CENTS`), which keeps the organ percussion and filter tracking on the sounding pitch; and its stereo samples' links are all broken (they point at sample 0, "Gun"), so the extractor pairs left and right by name.
-
-### Multi-Frame Wavetable System
-
-14 instrument spectral models generated offline by `tools/extract_wavetable.py`:
-
-| Index | Instrument | Characteristics |
-|-------|-----------|-----------------|
-| 0 | GrandPno | Piano inharmonicity, hammer noise, 8 harmonics |
-| 1 | Violin | 2nd harmonic strongest, bow noise, body formants |
-| 2 | NylonGtr | Pluck noise, string inharmonicity |
-| 3 | Flute | Weak upper harmonics, strong breath noise |
-| 4 | Trumpet | Strong mid harmonics, mute resonance formants |
-| 5 | Harmonica | Odd-heavy harmonics, reed/breath noise |
-| 6 | Cello | Rich harmonics, body formants |
-| 7 | Organ | 6-harmonic drawbar model |
-| 8 | Choir | Vocal formants (ah vowel), breath noise |
-| 9 | SoftStr | String ensemble harmonics |
-| 10 | Reed | Odd harmonics only (clarinet-like) |
-| 11 | AccordionReed | All harmonics, 1/n sawtooth rolloff, reed noise |
-| 12 | PipeOrgan | Full 8-harmonic registration |
-| 13 | SoftLead | Pulse-saw hybrid |
-
-Each table has 4 frames with progressive harmonic rolloff:
-- Frame 0 (attack): all harmonics at full strength
-- Frame 1: upper harmonics at 70% per octave
-- Frame 2: upper harmonics at 42% per octave
-- Frame 3 (tail): upper harmonics at 22% per octave
-
-The spectral modulation envelope (`modLevel`) drives crossfading between frames, giving time-varying timbre without relying solely on the filter.
-
-Total wavetable data: 56 KB in flash, zero RAM.
 
 ### 3-Pair FM Synthesis
 
@@ -100,7 +68,6 @@ Snap threshold: ~-54 dB, to avoid audible clicks at stage transitions.
 
 Independent from the amplitude ADSR. Controls:
 - FM modulation depth decay (brightness evolution on FM presets)
-- Wavetable frame crossfading (timbre evolution on wavetable presets)
 - Filter envelope amount
 
 It starts at full, then decays over `modDecayMs` to `modSustain` (0 = darkest). Sustained instruments settle at a high `modSustain`, so they keep their harmonics instead of fading to a near-sine; struck and plucked ones settle lower. With `modDecayMs = 0` it stays at full brightness.
@@ -170,7 +137,7 @@ The effect and drums alone (no voices) take 25%. Sample playback streams from fl
 
 - **Both cores**: voices 4-7 render on core 1 (`Core1Worker`) while core 0 renders voices 0-3, then core 0 mixes and runs the effects, drums and output.
 - **Block rendering at a control rate**: each voice renders a whole block; filter cutoff, spectral envelope, vibrato and effect modulation update every 8 samples (0.18 ms), the amplitude envelope every sample.
-- **RAM**: the per-sample functions (`AUDIO_HOT`), the sine table and the wavetables run from RAM rather than through the flash cache. (No preset uses the wavetables any more; dropping that copy would free ~56 KB of RAM.)
+- **RAM**: the per-sample functions (`AUDIO_HOT`) and the sine table run from RAM rather than through the flash cache.
 - **`-O2`** via `sketch.yaml` (the core defaults to `-Os`).
 - Fixed-point throughout; no divisions per voice per sample.
 
@@ -220,7 +187,7 @@ Choosing another pattern while playing switches at the next bar line, like a dru
 
 ## Controls
 
-`PerformanceController` turns button presses into state changes and commands; `ControlHold` adds hold-to-repeat (Tempo, Volume, Transpose: after 0.5 s, every 0.1 s) and the 2-second long press on Panic. Button presses are confirmed by `FeedbackSounds`: short sine blips (up, down, center, limit, blip, N blips) mixed dry after the effects and drums, scaled with the volume but kept audible near volume 0. In MIDI mode the engine renders only while a blip plays, with the music muted. See the README for the full button list.
+`PerformanceController` turns button presses into state changes and commands; `ControlHold` adds hold-to-repeat (Tempo, Volume, Transpose: after 0.5 s, every 0.1 s) and the 2-second long press on Panic. Button presses are confirmed by `FeedbackSounds`: short sine blips (up, down, center, limit, blip, N blips) mixed dry after the effects and drums, scaled with the volume but kept audible near volume 0. In MIDI mode the engine renders only while a blip plays, with the music muted. See the README for the full button list. The bank button arms bank 1 or 2 for the tone buttons (`PerformanceState` keeps the armed bank apart from the playing preset, so the sound only changes on the next tone button); pressing the current rhythm's button again is Fill.
 
 ## USB MIDI
 
@@ -242,8 +209,8 @@ Device name: "Synth Pico MIDI"
 
 ## Resource Usage
 
-- Flash: 1,628 KB (79% of 2 MB); the instrument samples are ~1.1 MB of it, the drum kit ~0.4 MB
-- RAM: ~121 KB (46%) with the wavetables copied into RAM
+- Flash: 1,966 KB (96% of 2 MB); the instrument samples are ~1.5 MB of it, the drum kit ~0.4 MB
+- RAM: ~62 KB (24%)
 - CPU: see Performance above
 
 ## Future Work

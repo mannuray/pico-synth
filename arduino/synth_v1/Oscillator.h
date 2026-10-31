@@ -6,17 +6,12 @@
 #include "SynthTypes.h"
 
 // Waveform generation. sample() is inline because it runs several times per
-// voice per audio sample. The tables are copied from flash (Oscillator.cpp, the
-// only file that includes the generated WaveTableData.h) into RAM at startup,
-// so lookups never wait on the flash cache.
+// voice per audio sample. The sine table is built in RAM at startup, so
+// lookups never wait on the flash cache.
 namespace osc {
-
-constexpr uint8_t kTableCount = 14;  // checked against WaveTableData.h in Oscillator.cpp
-constexpr uint8_t kFrameCount = 4;
 
 constexpr size_t kTableSize = 512;
 extern int16_t kSine[kTableSize];
-extern int16_t kWaveTables[kTableCount][kFrameCount][kTableSize];
 
 // MIDI note -> phase increment per sample (32-bit phase).
 uint32_t noteToPhaseStep(uint8_t midiNote);
@@ -47,9 +42,8 @@ inline int16_t AUDIO_HOT(sine)(uint32_t phase) {
   return dsp::interpolateTable(kSine, phase);
 }
 
-// phaseStep > 0 enables anti-aliasing for Saw/Square. framePos (0..32767)
-// crossfades wavetable frames from bright (frame 0) to dark (last frame).
-inline int16_t AUDIO_HOT(sample)(Waveform waveform, uint32_t phase, uint8_t wavetableIndex = 0, uint32_t phaseStep = 0, int32_t framePos = 0) {
+// phaseStep > 0 enables anti-aliasing for Saw/Square.
+inline int16_t AUDIO_HOT(sample)(Waveform waveform, uint32_t phase, uint32_t phaseStep = 0) {
   switch (waveform) {
     case Waveform::Triangle:
       return dsp::triangle(phase);
@@ -71,20 +65,6 @@ inline int16_t AUDIO_HOT(sample)(Waveform waveform, uint32_t phase, uint8_t wave
     }
     case Waveform::Sine:
       return sine(phase);
-    case Waveform::Wavetable: {
-      const uint8_t ti = wavetableIndex % kTableCount;
-      if (framePos <= 0) {
-        return dsp::interpolateTable(kWaveTables[ti][0], phase);
-      }
-      // Multi-frame crossfade: framePos 0=bright(frame0), 32767=dark(frame3).
-      const int32_t scaled = framePos * (kFrameCount - 1);
-      const uint8_t frameA = static_cast<uint8_t>(scaled >> 15);
-      const uint8_t frameB = (frameA < kFrameCount - 1) ? frameA + 1 : frameA;
-      const int32_t blend = (scaled - (static_cast<int32_t>(frameA) << 15)) >> 7;
-      const int16_t a = dsp::interpolateTable(kWaveTables[ti][frameA], phase);
-      const int16_t b = dsp::interpolateTable(kWaveTables[ti][frameB], phase);
-      return static_cast<int16_t>(a + (((b - a) * blend) >> 8));
-    }
     case Waveform::FM:
       return sine(phase);
     case Waveform::Sample:  // played by Voice from SampleData, not here

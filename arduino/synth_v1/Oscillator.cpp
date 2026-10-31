@@ -1,9 +1,8 @@
 #include "Oscillator.h"
-#include "WaveTableData.h"
 
-static_assert(kGenTableCount == osc::kTableCount, "update osc::kTableCount to match WaveTableData.h");
-static_assert(kGenFrameCount == osc::kFrameCount, "update osc::kFrameCount to match WaveTableData.h");
-static_assert(kGenWaveTableSize == 512, "dsp::interpolateTable assumes 512-sample tables");
+#include <math.h>
+
+static_assert(osc::kTableSize == 512, "dsp::interpolateTable assumes 512-sample tables");
 
 namespace {
 // Phase increment per sample for each MIDI note (A4 = note 69 = 440 Hz).
@@ -30,20 +29,16 @@ constexpr uint32_t kMidiToPhaseStepLut[128] = {
 namespace osc {
 
 int16_t kSine[kTableSize];
-int16_t kWaveTables[kTableCount][kFrameCount][kTableSize];
 
 namespace {
-// Copies the tables from flash into RAM before anything else runs (~58 KB).
-struct LoadTables {
-  LoadTables() {
-    memcpy(kSine, kSineTable, sizeof(kSine));
-    for (uint8_t t = 0; t < kTableCount; ++t) {
-      for (uint8_t f = 0; f < kFrameCount; ++f) {
-        memcpy(kWaveTables[t][f], kWaveTableData[t][f], sizeof(kWaveTables[t][f]));
-      }
+// Fills the sine table in RAM before anything else runs.
+struct BuildSine {
+  BuildSine() {
+    for (size_t i = 0; i < kTableSize; ++i) {
+      kSine[i] = static_cast<int16_t>(lround(32767.0 * sin(2 * M_PI * i / kTableSize)));
     }
   }
-} loadTables;
+} buildSine;
 }  // namespace
 
 uint32_t noteToPhaseStep(uint8_t midiNote) {

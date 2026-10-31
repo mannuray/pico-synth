@@ -5,9 +5,9 @@ A 37-key polyphonic synthesizer and USB MIDI controller built on the Raspberry P
 ## Features
 
 - **8-voice polyphony** at 44.1 kHz / 16-bit
-- **8 instruments and 8 rhythms**, matching the labels printed on the keyboard, level-matched
+- **16 instruments in two banks and 8 rhythms**; bank 1 and the rhythms match the labels printed on the keyboard, all level-matched
 - **Sampled instruments and drums** from the FluidR3_GM SoundFont (MIT licence): multi-zone, looped, 1.5 MB in flash
-- **Synthesis voices still in the engine**: multi-frame wavetables, 3-pair FM, PolyBLEP oscillators
+- **Synthesis voices still in the engine**: 3-pair FM, PolyBLEP oscillators
 - **PolyBLEP anti-aliased** sawtooth and square oscillators
 - **Exponential ADSR envelopes** with two-stage piano/guitar decay and a per-voice spectral envelope
 - **Per-voice resonant state-variable filter** with note-dependent brightness
@@ -55,6 +55,19 @@ See [docs/matrix-map.md](docs/matrix-map.md) for the full key matrix layout.
 | T7 | Music Box | 11 Music Box |
 | T8 | Guitar | 25 Acoustic Guitar (nylon) |
 
+**Bank 2** (press the bank button, Dog, then a tone button):
+
+| Button | Preset | GM program sent over MIDI |
+|--------|--------|---------------------------|
+| T1 | E.Piano (chorus) | 5 Electric Piano 1 |
+| T2 | Strings | 49 String Ensemble 1 |
+| T3 | Flute | 74 Flute |
+| T4 | Sax | 66 Alto Sax |
+| T5 | Clarinet | 72 Clarinet |
+| T6 | Harmonica | 23 Harmonica |
+| T7 | Vibraphone (tremolo) | 12 Vibraphone |
+| T8 | Steel Drum | 115 Steel Drums |
+
 ## Rhythms
 
 | Button | Pattern | Tempo | Feel |
@@ -74,8 +87,9 @@ The front-panel buttons are the toy keyboard's original ones, repurposed (toy la
 
 | Button | Function |
 |--------|----------|
-| T1-T8 | Select instrument (loads its default effect). Pressing T2 (Organ) again switches the Leslie slow/fast |
-| R1-R8 | Select rhythm; while stopped it also recalls the pattern's tempo, while playing your tempo is kept and the change happens at the next bar |
+| T1-T8 | Select instrument from the current bank (loads its default effect). Pressing T2 (Organ) again switches the Leslie slow/fast |
+| Bank (Dog) | Switch the tone buttons between bank 1 and bank 2 (one blip = bank 1, two = bank 2). The sound changes when you next press a tone button |
+| R1-R8 | Select rhythm; while stopped it also recalls the pattern's tempo, while playing your tempo is kept and the change happens at the next bar. **Pressing the current rhythm again** is Fill: playing, a fill on the next bar; stopped, arm/disarm Sync Start (the rhythm starts with the first key you play) |
 | Octave Down/Up (Duck/Bird) | Shift keyboard +/- 2 octaves |
 | Transpose Down/Up (Rec/Play) | Shift +/- 12 semitones |
 | Volume -/+ | 3 dB per press, down to silence |
@@ -84,7 +98,6 @@ The front-panel buttons are the toy keyboard's original ones, repurposed (toy la
 | Effect Select (Demo A) | Cycle Vibrato, Tremolo, Chorus, Reverb, Delay, Bitcrusher; also switches the effect on |
 | Effect On/Off (Demo B) | Toggle the effect |
 | Start/Stop (Demo C) | Start/stop the drums |
-| Fill (Dog) | Playing: fill on the next bar. Stopped: arm/disarm Sync Start (the rhythm starts with the first key you play) |
 | Intro/Ending (Frog) | Stopped: start with an intro fill. Playing: end with a fill and a crash |
 | Panic (Stop) | All notes off and sustain off; the rhythm keeps playing. **Hold 2 s** to switch the feedback sounds on/off |
 
@@ -98,9 +111,9 @@ The keyboard has no display, so button presses are confirmed with short, quiet s
 |---|---|
 | Rising two notes | Up / switched on |
 | Falling two notes | Down / switched off |
-| Double blip | Back to the default (octave 0, transpose 0) |
+| Double blip | Back to the default (octave 0, transpose 0); bank button: bank 2 armed |
 | Low "bonk" | Can't go further (limit) |
-| Single blip | Changed (volume: standalone, it plays at the new level; effect type) |
+| Single blip | Changed (volume: standalone, it plays at the new level; effect type); bank button: bank 1 armed |
 
 Hold Panic for 2 seconds to switch them off or on (they are on again after power-up). Holding a repeating button at its limit gives one "bonk" and stops repeating.
 
@@ -158,23 +171,7 @@ The instruments and the drum kit are cut from the FluidR3_GM SoundFont (`fluid-s
 python3 tools/extract_sf2.py /usr/share/sounds/sf2/FluidR3_GM.sf2
 ```
 
-It writes `arduino/synth_v1/SampleData.h` (8 instruments, up to 6 key zones each, mono 22.05 kHz, ~1.1 MB) and `DrumSamples.h` (12 drums, 44.1 kHz, ~0.4 MB). The `INSTRUMENTS` and `DRUMS` tables at the top of the script pick the GM programs, zone counts and lengths. Recordings are cut to fit; a sustained sound keeps its own loop when it fits, otherwise the last few whole pitch periods are looped with a cross-fade, and the preset's envelope shapes the rest. FluidR3's licence is in `third_party/FluidR3_GM/LICENSE`. (`tools/generate_drums.py`, the older synthesized kit, is kept as a fallback.)
-
-## Wavetable Generator
-
-The `tools/extract_wavetable.py` script generates multi-frame wavetable data from spectral models:
-
-```bash
-python3 tools/extract_wavetable.py --generate-all --table-size 512 --frames 4
-```
-
-This outputs `arduino/synth_v1/WaveTableData.h` with 14 instrument tables (56 KB in flash). Each instrument has 4 frames with progressive harmonic rolloff, noise components, inharmonicity, and body formants.
-
-The script can also extract wavetables from WAV recordings:
-
-```bash
-python3 tools/extract_wavetable.py recording.wav --name Piano --table-size 512 --frames 4
-```
+It writes `arduino/synth_v1/SampleData.h` (16 instruments, up to 6 key zones each, mono 22.05 kHz, ~1.5 MB) and `DrumSamples.h` (12 drums, 44.1 kHz, ~0.4 MB). The `INSTRUMENTS` and `DRUMS` tables at the top of the script pick the GM programs, zone counts and lengths. Recordings are cut to fit; a sustained sound keeps its own loop when it fits, otherwise the last few whole pitch periods are looped with a cross-fade, and the preset's envelope shapes the rest. FluidR3's licence is in `third_party/FluidR3_GM/LICENSE`. (`tools/generate_drums.py`, the older synthesized kit, is kept as a fallback.)
 
 ## Architecture
 
@@ -190,7 +187,7 @@ SynthEventSink        Applies events/commands to the synth engine
 MidiEventSink         USB MIDI output (notes, CC, program change)
 SynthEngine           Voice allocation, mixing, effect/rotary routing, output
 Voice                 One note: oscillators, envelope, filter
-Oscillator            Waveforms and wavetables
+Oscillator            Waveforms (sine, saw, square, triangle) and the sine table
 Samples               Sampled instruments: key zone lookup (the only file that includes SampleData.h)
 RotarySpeaker         Leslie-style rotary for the organ presets
 Effects               Master effects, one class each, plus the effect rack
@@ -201,21 +198,20 @@ I2SAudioOutput        I2S stereo output via PIO
 ArduinoPlatform       Clock, USB host detection, status LED
 SampleData.h          Instrument samples cut from FluidR3_GM by tools/extract_sf2.py
 DrumSamples.h         Drum samples, from the same tool
-WaveTableData.h       Pre-generated wavetable data (14 instruments x 4 frames)
 ```
 
 ## Resource Usage
 
 | Resource | Used | Available | % |
 |----------|------|-----------|---|
-| Flash | 1,628 KB | 2,044 KB | 79% (1.5 MB of samples) |
-| RAM | 121 KB | 256 KB | 46% |
+| Flash | 1,966 KB | 2,044 KB | 96% (1.9 MB of samples) |
+| RAM | 62 KB | 256 KB | 24% |
 | CPU, 8 voices + drums + effect (worst case, 250 MHz) | 47-58% average, 63% worst block | 100% | see docs/engine.md |
 
 ## Documentation
 
 - [docs/engine.md](docs/engine.md) - Synth engine architecture, effects, rhythm, MIDI, performance
-- [docs/instrument-profiles.md](docs/instrument-profiles.md) - Sound design details for the 8 instruments
+- [docs/instrument-profiles.md](docs/instrument-profiles.md) - Sound design details for the 16 instruments
 - [docs/matrix-map.md](docs/matrix-map.md) - Physical key matrix layout and button mapping
 
 ## License

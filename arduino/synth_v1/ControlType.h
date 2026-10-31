@@ -20,6 +20,6 @@ enum class ControlType : uint8_t {
   RhythmSelect,
   TransposeDown,
   TransposeUp,
-  RhythmFill,      // playing: fill on the next bar; stopped: arm/disarm sync start
+  InstrumentBank,  // toggles the bank the tone buttons choose from
   IntroEnding      // stopped: start with an intro fill; playing: end with a fill and crash
 };

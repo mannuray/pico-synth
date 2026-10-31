@@ -36,7 +36,9 @@ constexpr int8_t kMaxOctaveShift = 2;
 constexpr int8_t kMinTranspose = -12;
 constexpr int8_t kMaxTranspose = 12;
 
-constexpr uint8_t kPresetCount = 8;  // one per tone button T1-T8
+constexpr uint8_t kSlotsPerBank = 8;  // tone buttons T1-T8
+constexpr uint8_t kBankCount = 2;     // switched with the bank button (Dog)
+constexpr uint8_t kPresetCount = kSlotsPerBank * kBankCount;
 
 constexpr uint8_t kBaseMidiNote = 48; // C3 on the leftmost key
 constexpr uint8_t kTempoMinBpm = 40;

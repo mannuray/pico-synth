@@ -231,10 +231,6 @@ uint32_t AUDIO_HOT(Voice::currentPhaseStep)(const VoiceModulation &modulation, u
 }
 
 int32_t AUDIO_HOT(Voice::oscillate)(const Preset &preset, uint32_t phaseStep, int32_t modLevel15) {
-  // Wavetables move from the bright first frame toward the dark last frame
-  // as the spectral envelope falls; with no spectral decay they stay bright.
-  const int32_t framePos = modDecayRate_ > 0 ? (32767 - modLevel15) : 0;
-
   if (zone_ != nullptr) {
     // Recorded sample, linear interpolation between neighbouring samples.
     const uint32_t index = samplePos_ >> 12;
@@ -285,10 +281,10 @@ int32_t AUDIO_HOT(Voice::oscillate)(const Preset &preset, uint32_t phaseStep, in
     const uint32_t detuneStep = (phaseStep >> 10) * preset.detune;
     unisonPhase_[0] += phaseStep + detuneStep;
     unisonPhase_[1] += phaseStep - detuneStep;
-    int32_t sample = osc::sample(preset.waveform, phase_, preset.wavetableIndex, phaseStep, framePos);
-    sample += osc::sample(preset.waveform, unisonPhase_[0], preset.wavetableIndex, phaseStep + detuneStep, framePos);
-    sample += osc::sample(preset.waveform, unisonPhase_[1], preset.wavetableIndex, phaseStep - detuneStep, framePos);
+    int32_t sample = osc::sample(preset.waveform, phase_, phaseStep);
+    sample += osc::sample(preset.waveform, unisonPhase_[0], phaseStep + detuneStep);
+    sample += osc::sample(preset.waveform, unisonPhase_[1], phaseStep - detuneStep);
     return sample / 3;
   }
-  return osc::sample(preset.waveform, phase_, preset.wavetableIndex, phaseStep, framePos);
+  return osc::sample(preset.waveform, phase_, phaseStep);
 }

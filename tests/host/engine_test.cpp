@@ -103,15 +103,22 @@ static Partial strongestNear(const std::vector<int16_t> &x, double hz) {
 
 // MIDI note numbers match pitch (A4 = 69 = 440 Hz), the preset octave included.
 // Spectral, as sampled pianos and music boxes are slightly inharmonic: the
-// partial at the note's frequency is within ~10 cents (recorded instruments
-// aren't perfectly tuned) and nothing an octave or two below outweighs it.
+// partial at the note's frequency is close (recorded instruments aren't
+// perfectly tuned) and nothing an octave or two below outweighs it.
+// Bank 1 is within 10 cents. Some bank-2 recordings are further out at their
+// own root key, as FluidSynth plays them too: Vibraphone F#6 +16, Sax F#3 -12,
+// Steel Drum F#5 -11 cents; so 20 there.
 static void notesPlayAtMidiPitch() {
-  for (const char *name : {"Organ", "Violin", "Trumpet", "Piano", "Guitar", "MusicBox"}) {
+  struct Check { const char *name; double maxCents; };
+  for (const Check &c : {Check{"Organ", 10}, Check{"Violin", 10}, Check{"Trumpet", 10}, Check{"Piano", 10},
+                         Check{"Guitar", 10}, Check{"MusicBox", 10}, Check{"EPiano", 20}, Check{"Strings", 20},
+                         Check{"Flute", 20}, Check{"Sax", 20}, Check{"Clarinet", 20}, Check{"Harmonica", 20},
+                         Check{"Vibraphone", 20}, Check{"SteelDrum", 20}}) {
     for (uint8_t note : {45, 57, 69, 81}) {
       Capture out;
       SynthEngine engine(out, gFeedback);
       engine.begin();
-      engine.setPreset(findPreset(name));
+      engine.setPreset(findPreset(c.name));
       engine.setEffectEnabled(false);
       engine.noteOn(note);
       render(engine, 44100 / 64);
@@ -119,8 +126,8 @@ static void notesPlayAtMidiPitch() {
       const Partial f0 = strongestNear(out.left, expected);
       const double cents = 1200.0 * log2(f0.hz / expected);
       const double below = fmax(strongestNear(out.left, expected / 2).power, strongestNear(out.left, expected / 4).power);
-      if (fabs(cents) >= 10 || below > f0.power) printf("  %s note %d: %+.1f cents, sub-octave %.1f dB\n", name, note, cents, 10 * log10(below / f0.power));
-      CHECK(fabs(cents) < 10);
+      if (fabs(cents) >= c.maxCents || below > f0.power) printf("  %s note %d: %+.1f cents, sub-octave %.1f dB\n", c.name, note, cents, 10 * log10(below / f0.power));
+      CHECK(fabs(cents) < c.maxCents);
       CHECK(below < f0.power);
     }
   }

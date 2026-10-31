@@ -210,10 +210,10 @@ R0 C2 = Play
 Verified on the device by pressing each button and reading the serial log.
 
 ```text
-R1 C4..C7 = T1..T4    R1 C0..C3 = T5..T8    (tone buttons -> instruments 1-8)
+R1 C4..C7 = T1..T4    R1 C0..C3 = T5..T8    (tone buttons -> instruments 1-8 of the current bank)
 R7 C4..C7 = R1..R4    R7 C0..C3 = R5..R8    (rhythm buttons -> patterns 1-8)
 
-R6 C5 = Dog           Fill (stopped: Sync Start)
+R6 C5 = Dog           Instrument bank 1/2 (Fill = press the current rhythm again)
 R6 C6 = Frog          Intro/Ending
 R6 C7 = Duck          Octave Down
 R6 C0 = Bird          Octave Up

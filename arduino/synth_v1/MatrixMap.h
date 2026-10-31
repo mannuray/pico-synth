@@ -93,7 +93,7 @@ constexpr MatrixBinding kMatrixBindings[9][8] = {
     kEmptyBinding,                            // R6 C2 (no button)
     buildControl(ControlType::TempoUp),       // R6 C3
     buildControl(ControlType::VolumeUp),      // R6 C4
-    buildControl(ControlType::RhythmFill),    // R6 C5 = Dog
+    buildControl(ControlType::InstrumentBank), // R6 C5 = Dog
     buildControl(ControlType::IntroEnding),   // R6 C6 = Frog
     buildControl(ControlType::OctaveDown)     // R6 C7
   },

@@ -182,22 +182,22 @@ int main() {
     pc.handleControl(ControlType::RhythmSelect, findPattern("Disco"));     // while stopped
     CHECK(pc.performance().tempoBpm() == 120);
   }
-  // --- Fill, Intro/Ending, Sync Start.
+  // --- Fill (the current rhythm's button again), Intro/Ending, Sync Start.
   {
     Rec out; PerformanceController pc(out, gCues, log); pc.begin(); out.log.clear();
-    pc.handleControl(ControlType::RhythmFill, 0);        // stopped: arms sync start
+    pc.handleControl(ControlType::RhythmSelect, pc.performance().rhythmPattern());        // stopped: arms sync start
     CHECK(pc.performance().syncStartArmed() && gCues.last() == "Up" && out.log.empty());
-    pc.handleControl(ControlType::RhythmFill, 0);        // and disarms it
+    pc.handleControl(ControlType::RhythmSelect, pc.performance().rhythmPattern());        // and disarms it
     CHECK(!pc.performance().syncStartArmed() && gCues.last() == "Down");
     pc.handleControl(ControlType::IntroEnding, 0);
     CHECK(pc.performance().rhythmPlaying() && out.count(cmd(CommandType::RhythmPlaying, kRhythmStartWithIntro)) == 1);
-    pc.handleControl(ControlType::RhythmFill, 0);
+    pc.handleControl(ControlType::RhythmSelect, pc.performance().rhythmPattern());
     CHECK(out.count(cmd(CommandType::RhythmFill, 0)) == 1);
     pc.handleControl(ControlType::IntroEnding, 0);
     CHECK(!pc.performance().rhythmPlaying() && out.count(cmd(CommandType::RhythmPlaying, kRhythmStopWithEnding)) == 1);
 
     out.log.clear();
-    pc.handleControl(ControlType::RhythmFill, 0);        // stopped: arm sync start
+    pc.handleControl(ControlType::RhythmSelect, pc.performance().rhythmPattern());        // stopped: arm sync start
     CHECK(pc.performance().syncStartArmed() && gCues.last() == "Up" && out.log.empty());
     pc.handleKey(5, true);                                // first key starts the rhythm, before the note
     CHECK(pc.performance().rhythmPlaying() && !pc.performance().syncStartArmed());
@@ -205,6 +205,26 @@ int main() {
     pc.handleKey(5, false);
     pc.handleKey(7, true);                                // later keys don't restart it
     CHECK(out.count(cmd(CommandType::RhythmPlaying, kRhythmStart)) == 1);
+  }
+  // --- Instrument bank: the bank button arms bank 2 for the next tone button.
+  {
+    Rec out; PerformanceController pc(out, gCues, log); pc.begin();
+    pc.handleControl(ControlType::InstrumentSelect, 2);       // T3, bank 1
+    CHECK(pc.performance().activePresetIndex() == findPreset("Violin"));
+    out.log.clear();
+    pc.handleControl(ControlType::InstrumentBank, 0);
+    CHECK(pc.performance().instrumentBank() == 1 && gCues.last() == "Center");  // two blips
+    CHECK(out.log.empty() && pc.performance().activePresetIndex() == findPreset("Violin"));  // no change yet
+    pc.handleControl(ControlType::InstrumentSelect, 2);       // T3, bank 2
+    CHECK(pc.performance().activePresetIndex() == findPreset("Flute"));
+    CHECK(out.count(cmd(CommandType::SelectPreset, findPreset("Flute"))) == 1);
+    pc.handleControl(ControlType::InstrumentBank, 0);         // back to bank 1: one blip
+    CHECK(pc.performance().instrumentBank() == 0 && gCues.last() == "Blip");
+    pc.handleControl(ControlType::InstrumentSelect, 1);       // T2, bank 1 = Organ
+    CHECK(pc.performance().activePresetIndex() == findPreset("Organ"));
+    pc.handleControl(ControlType::InstrumentBank, 0);
+    pc.handleControl(ControlType::InstrumentSelect, 1);       // T2 in bank 2 is Strings, not the Leslie
+    CHECK(pc.performance().activePresetIndex() == findPreset("Strings") && !pc.performance().rotaryFast());
   }
   // --- Leslie speed: pressing the organ's button again; other presets just reload.
   {

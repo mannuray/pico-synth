@@ -48,6 +48,15 @@ INSTRUMENTS = [
     ('Bell',     14,  1, 1.5),
     ('MusicBox', 10,  4, 0.9),
     ('Guitar',   24,  5, 1.2),
+    # Bank 2
+    ('EPiano',     4,   2, 0.6),
+    ('Strings',    48,  2, 0.6),
+    ('Flute',      73,  2, 0.6),
+    ('Sax',        65,  2, 0.6),
+    ('Clarinet',   71,  3, 1.0),
+    ('Harmonica',  22,  3, 1.0),
+    ('Vibraphone', 11,  3, 1.0),
+    ('SteelDrum',  114, 3, 1.0),
 ]
 TAIL_LOOP_SECONDS = 0.08
 # Retuning in cents. FluidR3's Drawbar Organ sounds two octaves below the key
@@ -276,15 +285,24 @@ def to_int16(x):
 # ── Instruments ─────────────────────────────────────────────────────────────
 
 def pick_zones(zones, max_zones):
-    """Up to max_zones zones spread evenly across the keyboard, by root key."""
+    """Up to max_zones zones, by root key. With many zones, spread evenly
+    across all of them; with few (3 or less), the ones nearest evenly spaced
+    points over the keyboard's range (C2-F#6 inner points), so two zones don't end
+    up at the extremes (e.g. Rhodes C2 and C8)."""
     unique = {}
     for z in zones:
         unique.setdefault(z['root'], z)
     by_root = sorted(unique.values(), key=lambda z: z['root'])
     if len(by_root) <= max_zones:
         return by_root
-    idx = np.round(np.linspace(0, len(by_root) - 1, max_zones)).astype(int)
-    return [by_root[i] for i in sorted(set(idx))]
+    if max_zones > 3:
+        idx = np.round(np.linspace(0, len(by_root) - 1, max_zones)).astype(int)
+        return [by_root[i] for i in sorted(set(idx))]
+    picked = []
+    for target in np.linspace(36, 90, max_zones + 2)[1:-1]:
+        rest = [z for z in by_root if z not in picked]
+        picked.append(min(rest, key=lambda z: abs(z['root'] - target)))
+    return sorted(picked, key=lambda z: z['root'])
 
 
 def prepare_instrument(sf, program, max_zones, max_seconds, tune_cents=0):

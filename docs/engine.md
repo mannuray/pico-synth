@@ -127,9 +127,9 @@ The audio budget is 1.45 ms per 64-sample block. The firmware runs the RP2040 at
 
 | Presets | Average | Worst block |
 |---|---|---|
-| Organ (no master effect; rotary instead) | 47% | 53% |
-| Violin, Trumpet, Bell | 55-56% | 61-62% |
-| Piano, Banjo, Music Box, Guitar | 58% | 63% |
+| Vibraphone, Organ (rotary instead of a master effect), E.Piano (chorus) | 45-48% | 50-53% |
+| Violin, Trumpet, Bell, Strings, Flute, Sax, Clarinet, Harmonica | 55-56% | 60-61% |
+| Piano, Banjo, Music Box, Guitar, Steel Drum | 57% | 62-63% |
 
 The effect and drums alone (no voices) take 25%. Sample playback streams from flash through the XIP cache; it costs about the same as the synthesized voices it replaced.
 

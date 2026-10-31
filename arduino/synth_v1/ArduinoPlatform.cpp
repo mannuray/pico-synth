@@ -9,7 +9,12 @@ constexpr uint32_t kLedNoteFlashMs = 45;
 }  // namespace
 
 bool UsbMidiHostLink::isConnected() {
+#ifdef SYNTH_FORCE_STANDALONE
+  // Test builds: play through the speaker even while plugged into a computer.
+  return false;
+#else
   return MidiUSB.connected();
+#endif
 }
 
 void BuiltinStatusLed::begin(uint32_t nowMs) {

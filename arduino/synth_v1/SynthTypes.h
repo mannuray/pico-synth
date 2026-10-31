@@ -8,7 +8,8 @@ enum class Waveform : uint8_t {
   Square,
   Sine,
   Wavetable,
-  FM
+  FM,
+  Sample      // recorded instrument samples (Preset::sampleSet)
 };
 
 enum class EffectType : uint8_t {
@@ -41,6 +42,7 @@ struct Preset {
   // Oscillator
   Waveform waveform = Waveform::Wavetable;
   uint8_t wavetableIndex = 0;
+  uint8_t sampleSet = 0;            // Waveform::Sample: instrument in SampleData.h
   int8_t octave = 0;                // plays this many octaves away from the key's note
   bool unison = false;              // three detuned oscillators
   uint8_t detune = 0;               // unison spread

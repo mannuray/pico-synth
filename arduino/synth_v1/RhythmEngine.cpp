@@ -122,7 +122,7 @@ constexpr int32_t kCrashGain = 100;
 
 // Level of the whole drum mix (Q8). Set so that playing chords along with the
 // busiest patterns stays (almost) below the soft clipper at the default volume.
-constexpr int32_t kDrumBusGain = 200;
+constexpr int32_t kDrumBusGain = 170;
 
 // Velocity (Q8) for the step characters. Ghost notes ~-9 dB under normal hits.
 int32_t velocityGain(char c) {

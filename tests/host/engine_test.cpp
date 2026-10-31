@@ -2,6 +2,7 @@
 #include "Presets.h"
 #include "catalog.h"
 #include "RhythmPatterns.h"
+#include "SampleSet.h"
 #include "SynthEngine.h"
 #include "check.h"
 #include <math.h>
@@ -83,38 +84,68 @@ static void rotarySpinsAtPresetSpeed() {
   CHECK(fabs(measuredRotaryHz(findPreset("Organ"), true) - 6.7) < 0.5);   // and fast ("tremolo")
 }
 
-// Pitch of a held note by autocorrelation (works for harmonic sounds).
-static double measuredPitchHz(uint8_t preset, uint8_t note) {
+// Frequency of the strongest component within a semitone of `hz`, and its
+// power (DFT scan in 0.5-cent steps over 16384 samples from 0.1 s).
+struct Partial { double hz, power; };
+static Partial strongestNear(const std::vector<int16_t> &x, double hz) {
+  Partial best = {hz, 0};
+  for (double c = -100; c <= 100; c += 0.5) {
+    const double f = hz * pow(2.0, c / 1200);
+    double re = 0, im = 0;
+    for (size_t i = 4410; i < 4410 + 16384; ++i) {
+      re += x[i] * cos(2 * M_PI * f * i / 44100);
+      im += x[i] * sin(2 * M_PI * f * i / 44100);
+    }
+    if (re * re + im * im > best.power) best = {f, re * re + im * im};
+  }
+  return best;
+}
+
+// MIDI note numbers match pitch (A4 = 69 = 440 Hz), the preset octave included.
+// Spectral, as sampled pianos and music boxes are slightly inharmonic: the
+// partial at the note's frequency is within ~10 cents (recorded instruments
+// aren't perfectly tuned) and nothing an octave or two below outweighs it.
+static void notesPlayAtMidiPitch() {
+  for (const char *name : {"Organ", "Violin", "Trumpet", "Piano", "Guitar", "MusicBox"}) {
+    for (uint8_t note : {45, 57, 69, 81}) {
+      Capture out;
+      SynthEngine engine(out, gFeedback);
+      engine.begin();
+      engine.setPreset(findPreset(name));
+      engine.setEffectEnabled(false);
+      engine.noteOn(note);
+      render(engine, 44100 / 64);
+      const double expected = 440.0 * pow(2.0, (note - 69) / 12.0);
+      const Partial f0 = strongestNear(out.left, expected);
+      const double cents = 1200.0 * log2(f0.hz / expected);
+      const double below = fmax(strongestNear(out.left, expected / 2).power, strongestNear(out.left, expected / 4).power);
+      if (fabs(cents) >= 10 || below > f0.power) printf("  %s note %d: %+.1f cents, sub-octave %.1f dB\n", name, note, cents, 10 * log10(below / f0.power));
+      CHECK(fabs(cents) < 10);
+      CHECK(below < f0.power);
+    }
+  }
+}
+
+// The organ's percussion rings at the 3rd harmonic of the sounding note
+// (1320 Hz for A4), and fades: it follows the sample's pitch, not the zone's.
+static void organPercussionOnThirdHarmonic() {
   Capture out;
   SynthEngine engine(out, gFeedback);
   engine.begin();
-  engine.setPreset(preset);
+  engine.setPreset(findPreset("Organ"));
   engine.setEffectEnabled(false);
-  engine.noteOn(note);
+  engine.noteOn(69);
   render(engine, 44100 / 64);
-  const size_t start = 22050, window = 4096;
-  double best = -1;
-  int bestLag = 0;
-  for (int lag = 20; lag < 1000; ++lag) {
-    double sum = 0, norm = 1e-9;
-    for (size_t i = 0; i < window; ++i) {
-      sum += double(out.left[start + i]) * out.left[start + i + lag];
-      norm += double(out.left[start + i + lag]) * out.left[start + i + lag];
+  auto powerAt = [&](double hz, size_t start) {
+    double re = 0, im = 0;
+    for (size_t i = start; i < start + 2646; ++i) {  // 60 ms
+      re += out.left[i] * cos(2 * M_PI * hz * i / 44100);
+      im += out.left[i] * sin(2 * M_PI * hz * i / 44100);
     }
-    const double score = sum / sqrt(norm);
-    if (score > best * 1.02) {  // prefer the shortest lag among near-equal peaks
-      best = score;
-      bestLag = lag;
-    }
-  }
-  return 44100.0 / bestLag;
-}
-
-// MIDI note numbers match pitch (A4 = 69 = 440 Hz); the preset octave shifts it.
-static void notesPlayAtMidiPitch() {
-  CHECK(fabs(measuredPitchHz(findPreset("Organ"), 69) - 440.0) < 8.0);
-  CHECK(fabs(measuredPitchHz(findPreset("Organ"), 57) - 220.0) < 4.0);
-  CHECK(fabs(measuredPitchHz(findPreset("MusicBox"), 57) - 440.0) < 8.0);  // octave +1
+    return re * re + im * im;
+  };
+  CHECK(powerAt(1320, 0) > 100 * powerAt(1320, 22050));  // strong at first, gone by 0.5 s
+  CHECK(powerAt(1320, 0) > 100 * powerAt(4 * 1320, 0));  // and not two octaves up
 }
 
 // Volume 0 is silent for every preset, including the organ's rotary speaker.
@@ -192,6 +223,45 @@ static void chordsHaveHeadroom() {
     render(engine, 44100 * 2 / 64);
     if (out.peakSince(0) >= 24000) printf("  %s chord peak %d\n", presets::at(preset).name, out.peakSince(0));
     CHECK(out.peakSince(0) < 24000);
+  }
+}
+
+// Every key a player can reach (octave and transpose included) sounds on
+// every preset: no zone gap leaves a note silent.
+static void everyKeySounds() {
+  for (uint8_t preset = 0; preset < config::kPresetCount; ++preset) {
+    for (int note = 12; note <= 108; ++note) {
+      Capture out;
+      SynthEngine engine(out, gFeedback);
+      engine.begin();
+      engine.setPreset(preset);
+      engine.noteOn(static_cast<uint8_t>(note));
+      render(engine, 70);  // 0.1 s
+      int32_t peak = 0;
+      for (int16_t v : out.left) peak = max<int32_t>(peak, abs(v));
+      if (peak <= 200) printf("  %s note %d is silent (peak %d)\n", presets::at(preset).name, note, peak);
+      CHECK(peak > 200);
+    }
+  }
+}
+
+// Sample zones are well formed: loop inside the data, and the guard sample
+// after the end repeats the loop start, so interpolation across the loop seam
+// (and at the very end) reads valid, continuous data.
+static void sampleZonesAreSeamless() {
+  CHECK(samples::rate() == 22050);
+  for (uint8_t set = 0; set < samples::setCount(); ++set) {
+    const SampleZone *previous = nullptr;
+    for (int note = 0; note < 128; ++note) {
+      const SampleZone &z = samples::zoneFor(set, static_cast<uint8_t>(note));
+      if (&z == previous) continue;
+      previous = &z;
+      CHECK(z.loopStart < z.loopEnd && z.loopEnd <= z.length && z.loopEnd - z.loopStart >= 16);
+      if (!z.looped) continue;
+      CHECK(z.data[z.loopEnd] == z.data[z.loopStart]);
+      // The loop end was cross-faded into the audio just before the loop start.
+      CHECK(abs(z.data[z.loopEnd - 1] - z.data[z.loopStart - 1]) <= 1);
+    }
   }
 }
 
@@ -288,10 +358,13 @@ int main() {
   chunkedRenderMatches();
   rotarySpinsAtPresetSpeed();
   notesPlayAtMidiPitch();
+  organPercussionOnThirdHarmonic();
   zeroVolumeIsSilent();
   fullVolumeChordsStayInRange();
   chordsHaveHeadroom();
   allNotesRenderSafely();
+  everyKeySounds();
+  sampleZonesAreSeamless();
   drumsStayDry();
   chordsWithDrumsHaveHeadroom();
   mutedEnginePlaysOnlyFeedback();

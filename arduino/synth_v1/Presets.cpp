@@ -29,51 +29,51 @@ constexpr OrganTraits kHammond{
 // vibrato +-10-22 cents (20-44 peak-to-peak) at 5-6 Hz fading in after the
 // attack, piano and guitar ring for seconds with a fast initial drop.
 constexpr Preset kPresets[config::kPresetCount] = {
-  // T1-T8, matching the labels printed on the keyboard.
+  // T1-T8, matching the labels printed on the keyboard. All play recorded
+  // samples from the FluidR3_GM SoundFont (SampleData.h, same order). The
+  // filter is left open so it doesn't colour the recordings. Plucked and
+  // struck instruments get a two-stage decay that continues the recording's
+  // own decay past the point where the stored sample was cut.
   {.name = "Piano", .gmProgram = 0,  // GM 1 Acoustic Grand Piano
-   .wavetableIndex = 0,
-   .attackMs = 2, .decayMs = 500, .decay2Ms = 7000, .sustainLevel = 0, .releaseMs = 300,
-   .brightness = 220, .resonance = 30, .modulationDepth = 60, .modDecayMs = 2500, .modSustain = 130,
-   .gain = 157},
+   .waveform = Waveform::Sample, .sampleSet = 0,
+   .attackMs = 1, .decayMs = 1500, .decay2Ms = 7000, .sustainLevel = 0, .releaseMs = 350,
+   .brightness = 400, .resonance = 0,
+   .gain = 128},
   {.name = "Organ", .gmProgram = 16,  // GM 17 Drawbar Organ
-   .wavetableIndex = 7,
+   .waveform = Waveform::Sample, .sampleSet = 1,
    .attackMs = 3, .releaseMs = 40,
-   .brightness = 260, .resonance = 20,
+   .brightness = 400, .resonance = 0,
    .gain = 104, .effectEnabled = false, .organ = &kHammond},
   {.name = "Violin", .gmProgram = 40,  // GM 41 Violin
-   .wavetableIndex = 1,
-   .attackMs = 80, .decayMs = 300, .sustainLevel = 220, .releaseMs = 250,
-   .brightness = 210, .resonance = 50, .modulationDepth = 40, .modDecayMs = 400, .modSustain = 200,
-   .vibratoRateX10 = 60, .vibratoCents = 22, .vibratoDelayMs = 250,
-   .gain = 109},
+   .waveform = Waveform::Sample, .sampleSet = 2,
+   .attackMs = 40, .releaseMs = 250,
+   .brightness = 400, .resonance = 0,
+   .gain = 112},
   {.name = "Trumpet", .gmProgram = 56,  // GM 57 Trumpet
-   .wavetableIndex = 4,
-   .attackMs = 30, .decayMs = 200, .sustainLevel = 210, .releaseMs = 120,
-   .brightness = 230, .resonance = 40, .modulationDepth = 60, .modDecayMs = 250, .modSustain = 210,
-   .vibratoRateX10 = 55, .vibratoCents = 15, .vibratoDelayMs = 350,
-   .gain = 126},
+   .waveform = Waveform::Sample, .sampleSet = 3,
+   .attackMs = 10, .releaseMs = 120,
+   .brightness = 400, .resonance = 0,
+   .gain = 128},
   {.name = "Banjo", .gmProgram = 105,  // GM 106 Banjo
-   .wavetableIndex = 2,
-   .attackMs = 1, .decayMs = 120, .decay2Ms = 900, .sustainLevel = 0, .releaseMs = 150,
-   .brightness = 300, .resonance = 90, .modulationDepth = 90, .modDecayMs = 250, .modSustain = 80,
-   .gain = 150},
+   .waveform = Waveform::Sample, .sampleSet = 4,
+   .attackMs = 1, .decayMs = 600, .decay2Ms = 1800, .sustainLevel = 0, .releaseMs = 150,
+   .brightness = 400, .resonance = 0,
+   .gain = 128},
   {.name = "Bell", .gmProgram = 14,  // GM 15 Tubular Bells
-   .waveform = Waveform::FM,
-   .fmRatioX100 = 140, .fmDepth = 80,  // Chowning's bell: c:m = 5:7, index ~8
-   .attackMs = 1, .decayMs = 1500, .decay2Ms = 8000, .sustainLevel = 0, .releaseMs = 2000,
-   .brightness = 400, .resonance = 10, .modDecayMs = 3000, .modSustain = 0,
-   .gain = 102},
+   .waveform = Waveform::Sample, .sampleSet = 5,
+   .attackMs = 1, .decayMs = 2000, .decay2Ms = 8000, .sustainLevel = 0, .releaseMs = 1500,
+   .brightness = 400, .resonance = 0,
+   .gain = 144},
   {.name = "MusicBox", .gmProgram = 10,  // GM 11 Music Box
-   .waveform = Waveform::FM, .octave = 1,
-   .fmRatioX100 = 700, .fmDepth = 20,
-   .attackMs = 1, .decayMs = 600, .decay2Ms = 2500, .sustainLevel = 0, .releaseMs = 800,
-   .brightness = 400, .resonance = 10, .modDecayMs = 400, .modSustain = 0,
-   .gain = 120},
+   .waveform = Waveform::Sample, .sampleSet = 6,
+   .attackMs = 1, .decayMs = 800, .decay2Ms = 2500, .sustainLevel = 0, .releaseMs = 800,
+   .brightness = 400, .resonance = 0,
+   .gain = 160},
   {.name = "Guitar", .gmProgram = 24,  // GM 25 Acoustic Guitar (nylon)
-   .wavetableIndex = 2,
-   .attackMs = 1, .decayMs = 250, .decay2Ms = 3500, .sustainLevel = 0, .releaseMs = 250,
-   .brightness = 220, .resonance = 50, .modulationDepth = 70, .modDecayMs = 1000, .modSustain = 110,
-   .gain = 150},
+   .waveform = Waveform::Sample, .sampleSet = 7,
+   .attackMs = 1, .decayMs = 1000, .decay2Ms = 3500, .sustainLevel = 0, .releaseMs = 250,
+   .brightness = 400, .resonance = 0,
+   .gain = 128},
 };
 
 }  // namespace

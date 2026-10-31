@@ -2,6 +2,7 @@
 
 #include "Dsp.h"
 #include "EffectTypes.h"
+#include "SampleSet.h"
 #include "SynthTypes.h"
 #include "VoiceShape.h"
 
@@ -80,6 +81,13 @@ private:
   uint32_t vibratoDepthStep_ = 0; // peak phase-step deviation
   int32_t vibratoFade_ = 0;       // Q15, ramps up over the vibrato delay
   int32_t vibratoFadeStep_ = 0;
+
+  // Recorded sample playback (Waveform::Sample); position is Q20.12
+  const SampleZone *zone_ = nullptr;
+  uint32_t samplePos_ = 0;
+  uint32_t sampleInc_ = 0;       // current increment (follows vibrato/pitch modulation)
+  uint32_t sampleIncScale_ = 0;  // increment = phaseStep * scale / 2^32
+  bool sampleEnded_ = false;
 
   dsp::StateVariableLowPass filter_;
 

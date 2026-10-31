@@ -104,14 +104,20 @@ static void tripletGridKeepsTheBeat() {
   CHECK(kickEnergy(blues, 2 * beat) > 4 * kickEnergy(blues, beat));
 }
 
-// High-frequency energy in the first 0.2 s of a bar (crash = lots).
+// A crash rings through the gaps between the other hits: high-frequency
+// energy (first difference) of the quietest 512-sample window in the first
+// 0.6 s of a bar. Near zero without a crash, since the kit's other hits are short.
 static double crashEnergy(const std::vector<int32_t> &x, size_t start) {
-  double e = 0;
-  for (size_t i = start + 1; i < start + 8820 && i < x.size(); ++i) {
-    const double d = x[i] - x[i - 1];  // first difference ~ high-pass
-    e += d * d;
+  double quietest = 1e300;
+  for (size_t a = start; a + 512 <= start + 26460 && a + 512 <= x.size(); a += 256) {
+    double e = 0;
+    for (size_t i = a + 1; i < a + 512; ++i) {
+      const double d = x[i] - x[i - 1];
+      e += d * d;
+    }
+    quietest = fmin(quietest, e);
   }
-  return e;
+  return quietest;
 }
 
 // Rock: a crash marks bar 5 (after the bar-4 fill); bar 1 has none.
@@ -119,7 +125,7 @@ static void crashFollowsFill() {
   const uint8_t bpm = 112;
   const size_t bar = static_cast<size_t>(config::kSampleRate * 60.0 / bpm * 4);
   const auto rock = renderPattern(findPattern("Rock"), bpm, 5.0 * bar / config::kSampleRate + 0.5);
-  CHECK(crashEnergy(rock, 4 * bar) > 4 * crashEnergy(rock, 0));
+  CHECK(crashEnergy(rock, 4 * bar) > 1e7 + 100 * crashEnergy(rock, 0));
 }
 
 // Waltz is in 3/4: its bar is 12 sixteenths, so beat 1 recurs every 3 beats.
@@ -171,7 +177,7 @@ static void introEndingAndFill() {
     r.start(true);
     for (size_t i = 0; i < bars * bar; ++i) out.push_back(r.renderSample());
   }, 3);
-  CHECK(crashEnergy(intro, bar) > 4 * crashEnergy(intro, 0));  // crash on bar 2, not bar 1
+  CHECK(crashEnergy(intro, bar) > 1e7 + 100 * crashEnergy(intro, 0));  // crash on bar 2, not bar 1
 
   bool stoppedAfter = false;
   const auto ending = run([&](RhythmEngine &r, std::vector<int32_t> &out, size_t) {
@@ -182,7 +188,7 @@ static void introEndingAndFill() {
     stoppedAfter = !r.playing();
   }, 4);
   CHECK(stoppedAfter);
-  CHECK(crashEnergy(ending, 2 * bar) > 4 * crashEnergy(ending, bar));  // bar 2 = fill, crash at bar 3
+  CHECK(crashEnergy(ending, 2 * bar) > 1e7 + 100 * crashEnergy(ending, bar));  // bar 2 = fill, crash at bar 3
   CHECK(kickEnergy(ending, 3 * bar) * 20 < kickEnergy(ending, 0));     // nothing after the ending
 
   const auto fill = run([&](RhythmEngine &r, std::vector<int32_t> &out, size_t) {
@@ -191,7 +197,7 @@ static void introEndingAndFill() {
     r.requestFill();                                    // bar 2 becomes the fill
     for (size_t i = bar / 2; i < 3 * bar + bar / 4; ++i) out.push_back(r.renderSample());
   }, 4);
-  CHECK(crashEnergy(fill, 2 * bar) > 4 * crashEnergy(fill, bar));      // crash at bar 3
+  CHECK(crashEnergy(fill, 2 * bar) > 1e7 + 100 * crashEnergy(fill, bar));      // crash at bar 3
 }
 
 int main() {

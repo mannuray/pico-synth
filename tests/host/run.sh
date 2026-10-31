@@ -10,7 +10,7 @@ trap 'rm -rf "$OUT"' EXIT
 CXX=${CXX:-c++}
 FLAGS="-std=gnu++20 -O1 -g -Wall -Wextra -Wno-unused-parameter -fsanitize=undefined -fno-sanitize-recover=undefined -I$HERE/stub -I$SRC"
 
-ENGINE="$SRC/SynthEngine.cpp $SRC/Voice.cpp $SRC/VoiceShape.cpp $SRC/Oscillator.cpp $SRC/Feedback.cpp \
+ENGINE="$SRC/SynthEngine.cpp $SRC/Samples.cpp $SRC/Voice.cpp $SRC/VoiceShape.cpp $SRC/Oscillator.cpp $SRC/Feedback.cpp \
         $SRC/RotarySpeaker.cpp $SRC/Effects.cpp $SRC/Presets.cpp $SRC/RhythmEngine.cpp"
 CONTROL="$SRC/PerformanceController.cpp $SRC/PerformanceState.cpp $SRC/PitchSettings.cpp \
          $SRC/KeyTracker.cpp $SRC/OutputRouter.cpp $SRC/SynthEventSink.cpp"

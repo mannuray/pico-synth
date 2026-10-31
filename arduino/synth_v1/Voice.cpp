@@ -2,6 +2,8 @@
 #include "AudioHot.h"
 #include "Oscillator.h"
 
+#include <math.h>
+
 namespace {
 constexpr int32_t kClickDecayPerSample = 136;          // ~1 ms key-click burst at 44.1 kHz
 constexpr int32_t kEnvelopeSnap = 64 << 15;            // ~-54 dB: treat as arrived
@@ -29,6 +31,17 @@ void Voice::start(uint8_t keyNote, const Preset &preset, int16_t stereoPan, bool
   // Random start phase: prevents phasing artifacts when retriggering the same note.
   phase_ = noise.next();
   phaseStep_ = osc::noteToPhaseStep(pitchNote);
+
+  if (preset.waveform == Waveform::Sample) {
+    // Playback speed for this note relative to the recording, as a Q12
+    // increment per output sample; kept proportional to phaseStep so vibrato
+    // and pitch modulation apply exactly as to the other oscillators.
+    zone_ = &samples::zoneFor(preset.sampleSet, pitchNote);
+    const double semitones = (pitchNote - zone_->rootKey) + zone_->tuneCents / 100.0;
+    const double increment = 4096.0 * pow(2.0, semitones / 12.0) * samples::rate() / config::kSampleRate;
+    sampleIncScale_ = static_cast<uint32_t>(increment / phaseStep_ * 4294967296.0);
+    sampleInc_ = static_cast<uint32_t>(increment);
+  }
 
   if (preset.unison) {
     unisonPhase_[0] = noise.next();
@@ -94,6 +107,9 @@ size_t AUDIO_HOT(Voice::renderBlock)(const Preset &preset, const VoiceShape &sha
     const int32_t modLevel15 = advanceSpectralEnvelope(samples);
     const uint32_t phaseStep = currentPhaseStep(mod, samples);
     const int32_t cutoff = filterCutoff(preset, shape, modLevel15);
+    if (zone_ != nullptr) {
+      sampleInc_ = static_cast<uint32_t>((static_cast<uint64_t>(phaseStep) * sampleIncScale_) >> 32);
+    }
 
     for (size_t i = start; i < end; ++i) {
       advanceEnvelope(shape);
@@ -101,6 +117,10 @@ size_t AUDIO_HOT(Voice::renderBlock)(const Preset &preset, const VoiceShape &sha
         return i;
       }
       int32_t sample = oscillate(preset, phaseStep, modLevel15);
+      if (sampleEnded_) {
+        reset();  // a one-shot recording has finished
+        return i;
+      }
       sample += organSounds(noise);
       if (mod.gainQ8 != 256) {
         sample = (sample * mod.gainQ8) >> 8;
@@ -214,6 +234,23 @@ int32_t AUDIO_HOT(Voice::oscillate)(const Preset &preset, uint32_t phaseStep, in
   // Wavetables move from the bright first frame toward the dark last frame
   // as the spectral envelope falls; with no spectral decay they stay bright.
   const int32_t framePos = modDecayRate_ > 0 ? (32767 - modLevel15) : 0;
+
+  if (zone_ != nullptr) {
+    // Recorded sample, linear interpolation between neighbouring samples.
+    const uint32_t index = samplePos_ >> 12;
+    const int32_t frac = static_cast<int32_t>(samplePos_ & 0xFFFu);
+    const int32_t a = zone_->data[index];
+    const int32_t b = zone_->data[index + 1];
+    samplePos_ += sampleInc_;
+    if (zone_->looped) {
+      if ((samplePos_ >> 12) >= zone_->loopEnd) {
+        samplePos_ -= (zone_->loopEnd - zone_->loopStart) << 12;
+      }
+    } else if ((samplePos_ >> 12) >= zone_->length) {
+      sampleEnded_ = true;
+    }
+    return a + (((b - a) * frac) >> 12);
+  }
 
   if (preset.waveform == Waveform::FM) {
     // Pair 1 (body): carrier at pitch, modulator at fmRatioX100 / 100, optional feedback.

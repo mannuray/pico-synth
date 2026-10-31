@@ -87,6 +87,8 @@ inline int16_t AUDIO_HOT(sample)(Waveform waveform, uint32_t phase, uint8_t wave
     }
     case Waveform::FM:
       return sine(phase);
+    case Waveform::Sample:  // played by Voice from SampleData, not here
+      break;
   }
 
   return 0;
